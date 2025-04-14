@@ -1,3 +1,3 @@
 
 ## spotify-helper
-解锁spotify。
+国内注册，解锁spotify。
