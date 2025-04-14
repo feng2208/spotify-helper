@@ -1,0 +1,54 @@
+---
+# https://github.com/feng2208/spotify-helper
+
+# mappings:
+# - hosts:
+#     - example.com
+#     - "*.example.com" # 所有子域名
+#   sni: sni.example.com
+#   address: 100.1.1.1:443
+# sni 和 hosts 都会用来验证服务器证书，如果 sni 以下划线开头(如：_example.com)，则 sni 不会被发送。
+
+
+# spotify
+spotify_hosts:
+  - accounts.spotify.com
+  - www.spotify.com
+  - spclient.wg.spotify.com
+spotify_address: 217.142.251.150:443
+
+# https://apresolve.spotify.com/
+spotify_ap:
+  - ap-gue1.spotify.com
+  - ap-guc3.spotify.com
+  - ap-gew1.spotify.com
+  - ap-gew4.spotify.com
+  - ap-gae2.spotify.com
+spotify_ap_address: 217.142.251.150:443
+
+
+mappings:
+
+### github
+- hosts:
+    - github.com
+  sni: octocaptcha.com
+  address: 20.27.177.113:443
+
+- hosts:
+    - github.githubassets.com
+    - "*.githubusercontent.com"
+  sni: yelp.com
+  address: 199.232.240.116:443
+
+
+### spotify
+- hosts:
+    - download.scdn.co
+  address: 146.75.70.248:443
+
+- hosts:
+    - www.google.com
+  sni: www.recaptcha.net
+  address: 23.247.135.6:1918
+
