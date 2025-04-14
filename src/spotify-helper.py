@@ -157,7 +157,7 @@ class SpotifyHelper(TlsConfig):
 
     tcp_hosts: list[str]
 
-    github_hosts_loaded: bool
+    hosts_loaded: bool
     spotify_auth: bool
     yaml_config: dict
 
@@ -165,16 +165,16 @@ class SpotifyHelper(TlsConfig):
         self.host_mappings = {}
         self.star_mappings = {}
         self.tcp_hosts = []
-        self.github_hosts_loaded = False
+        self.hosts_loaded = False
         self.spotify_auth = False
         self.yaml_config = {}
 
     def load(self, loader: Loader) -> None:
-        if not self.github_hosts_loaded:
+        if not self.hosts_loaded:
             yaml = YAML(typ='safe')
             self.yaml_config = yaml.load(Path(CONFIG_FILE))
             self._load_hosts()
-            self.github_hosts_loaded = True
+            self.hosts_loaded = True
 
         loader.add_option(
             name="connection_strategy",
