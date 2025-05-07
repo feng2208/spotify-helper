@@ -10,13 +10,6 @@
 # sni 和 hosts 都会用来验证服务器证书，如果 sni 以下划线开头(如：_example.com)，则 sni 不会被发送。
 
 
-# spotify
-spotify_hosts:
-  - accounts.spotify.com
-  - www.spotify.com
-  - spclient.wg.spotify.com
-spotify_address: 217.142.251.150:443
-
 # https://apresolve.spotify.com/
 spotify_ap:
   - ap-gue1.spotify.com
@@ -39,3 +32,14 @@ mappings:
   sni: www.recaptcha.net
   address: 23.247.135.6:1918
 
+- hosts:
+    - accounts.spotify.com
+    - www.spotify.com
+    - spclient.wg.spotify.com
+  address: 217.142.251.150:443
+
+- hosts:
+    - login5.spotify.com 
+    - apresolve.spotify.com 
+    - api-partner.spotify.com
+  address: 35.186.224.31:443
