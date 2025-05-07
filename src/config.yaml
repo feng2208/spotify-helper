@@ -24,10 +24,6 @@ mappings:
 
 ### spotify
 - hosts:
-    - download.scdn.co
-  address: 146.75.70.248:443
-
-- hosts:
     - www.google.com
   sni: www.recaptcha.net
   address: 23.247.135.6:1918
