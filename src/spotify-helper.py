@@ -240,10 +240,11 @@ class SpotifyHelper(TlsConfig):
 
     def server_connect(self, data: ServerConnectionHookData) -> None:
         _host = data.server.address[0]
-        if self.spotify_auth and _host in self.yaml_config['spotify_ap']:
-            host = self.yaml_config['spotify_ap_address'].split(':')[0]
-            port = int(self.yaml_config['spotify_ap_address'].split(':')[1])
-            data.server.address = (host, port)
+        if _host in self.yaml_config['spotify_ap']:
+            if self.spotify_auth:
+                host = self.yaml_config['spotify_ap_address'].split(':')[0]
+                port = int(self.yaml_config['spotify_ap_address'].split(':')[1])
+                data.server.address = (host, port)
             logging.info(f"xxxxxxxx-spotify-ap: {_host} {data.server.address}")
 
     def requestheaders(self, flow: HTTPFlow) -> None:
