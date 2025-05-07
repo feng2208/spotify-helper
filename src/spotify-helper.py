@@ -158,7 +158,6 @@ class SpotifyHelper(TlsConfig):
     tcp_hosts: list[str]
 
     hosts_loaded: bool
-    spotify_auth: bool
     yaml_config: dict
 
     def __init__(self) -> None:
@@ -166,7 +165,6 @@ class SpotifyHelper(TlsConfig):
         self.star_mappings = {}
         self.tcp_hosts = []
         self.hosts_loaded = False
-        self.spotify_auth = False
         self.yaml_config = {}
 
     def load(self, loader: Loader) -> None:
@@ -198,19 +196,9 @@ class SpotifyHelper(TlsConfig):
     def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         data.ignore_connection = True
         host = data.context.client.sni
-        if host in self.yaml_config['spotify_hosts']:
-            _spot_addr = self.yaml_config['spotify_address']
-            spot_addr = (_spot_addr.split(':')[0], int(_spot_addr.split(':')[1]))
-            if host == "spclient.wg.spotify.com":
-                data.ignore_connection = False
-                if self.spotify_auth:
-                    data.context.server.address = spot_addr
-            else:
-                data.context.server.address = spot_addr
-                self.spotify_auth = True
-            logging.info(f"xxxxxxxx-tls-server-host: {host}")
-            logging.info(f"xxxxxxxx-tls-server-address: {data.context.server.address}")
-            return
+
+        if host == "spclient.wg.spotify.com":
+            data.ignore_connection = False
 
         mapping = self._get_sni(host)
         if mapping is not None:
@@ -241,10 +229,9 @@ class SpotifyHelper(TlsConfig):
     def server_connect(self, data: ServerConnectionHookData) -> None:
         _host = data.server.address[0]
         if _host in self.yaml_config['spotify_ap']:
-            if self.spotify_auth:
-                host = self.yaml_config['spotify_ap_address'].split(':')[0]
-                port = int(self.yaml_config['spotify_ap_address'].split(':')[1])
-                data.server.address = (host, port)
+            host = self.yaml_config['spotify_ap_address'].split(':')[0]
+            port = int(self.yaml_config['spotify_ap_address'].split(':')[1])
+            data.server.address = (host, port)
             logging.info(f"xxxxxxxx-spotify-ap: {_host} {data.server.address}")
 
     def requestheaders(self, flow: HTTPFlow) -> None:
