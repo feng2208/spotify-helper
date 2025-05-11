@@ -40,4 +40,7 @@ mappings:
     - api-partner.spotify.com
     - challenge.spotify.com
     - clienttoken.spotify.com
+    - api.spotify.com
+    - spotify.com
+    - exp.wg.spotify.com
   address: 35.186.224.31:443
