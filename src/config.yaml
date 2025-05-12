@@ -43,4 +43,5 @@ mappings:
     - api.spotify.com
     - spotify.com
     - exp.wg.spotify.com
+    - auth-callback.spotify.com
   address: 35.186.224.31:443
