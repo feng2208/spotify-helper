@@ -211,13 +211,6 @@ class SpotifyHelper(TlsConfig):
                 data.context.server.address = mapping.address
                 logging.info(f"xxxxxxxx-tls-server-address: {mapping.address}")
 
-        else:
-            s_host = data.context.server.address[0]
-            s_port = data.context.server.address[1]
-            c_host = data.context.client.peername[0]
-            c_port = data.context.client.peername[1]
-            logging.info(f"{c_host}:{c_port} {s_host}:{s_port}")
-
     def tls_start_server(self, tls_start: tls.TlsData) -> None:
         super().tls_start_server(tls_start)
         tls_start.ssl_conn.verify_host1 = tls_start.conn.sni
@@ -235,6 +228,9 @@ class SpotifyHelper(TlsConfig):
             data.server.address = (host, port)
             logging.info(f"xxxxxxxx-spotify-ap: {_host} {data.server.address}")
 
+    def server_connect_error(self, data: ServerConnectionHookData) -> None:
+        logging.info(f"connect error: {data.server.address[0]}:{data.server.address[1]}")
+        
     def requestheaders(self, flow: HTTPFlow) -> None:
         flow.request.stream = True
         req_path = flow.request.path
