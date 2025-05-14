@@ -214,8 +214,9 @@ class SpotifyHelper(TlsConfig):
         else:
             s_host = data.context.server.address[0]
             s_port = data.context.server.address[1]
+            c_host = data.context.client.peername[0]
             c_port = data.context.client.peername[1]
-            logging.info(f"{c_port} {s_host}:{s_port}")
+            logging.info(f"{c_host}:{c_port} {s_host}:{s_port}")
 
     def tls_start_server(self, tls_start: tls.TlsData) -> None:
         super().tls_start_server(tls_start)
