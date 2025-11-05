@@ -17,7 +17,7 @@ spotify_ap:
   - ap-gew1.spotify.com
   - ap-gew4.spotify.com
   - ap-gae2.spotify.com
-spotify_ap_address: 217.142.251.150:443
+spotify_ap_address: 141.147.155.168:443
 
 
 mappings:
@@ -32,7 +32,7 @@ mappings:
     - accounts.spotify.com
     - www.spotify.com
     - spclient.wg.spotify.com
-  address: 217.142.251.150:443
+  address: 141.147.155.168:443
 
 - hosts:
     - login5.spotify.com 
