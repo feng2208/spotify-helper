@@ -197,7 +197,7 @@ class SpotifyHelper(TlsConfig):
         data.ignore_connection = True
         host = data.context.client.sni
 
-        if host == "spclient.wg.spotify.com":
+        if self._spclient(host):
             data.ignore_connection = False
 
         mapping = self._get_sni(host)
@@ -234,8 +234,7 @@ class SpotifyHelper(TlsConfig):
     def requestheaders(self, flow: HTTPFlow) -> None:
         flow.request.stream = True
         req_path = flow.request.path
-        req_host = flow.request.host_header          
-        if req_host == "spclient.wg.spotify.com":
+        if self._spclient(flow.request.host_header):
             # spotify ads and trackers
             if (req_path.startswith("/ads/")
                     or req_path.startswith("/ad-logic/")
@@ -243,29 +242,28 @@ class SpotifyHelper(TlsConfig):
                     or req_path.startswith("/gabo-receiver-service/")):
                 flow.request.stream = False
                 flow.response = Response.make(503)
-            # spotify protobuf
-            elif self._spclient(flow):
-                if 'if-none-match' in flow.request.headers:
-                    del flow.request.headers['if-none-match']
             elif (req_path.startswith("/artistview/v1/artist")):
                 flow.request.path = flow.request.path.replace('platform=iphone', 'platform=ipad')
+            # spotify protobuf
+            elif self._sp_path(req_path):
+                if 'if-none-match' in flow.request.headers:
+                    del flow.request.headers['if-none-match']
 
     def responseheaders(self, flow: HTTPFlow) -> None:
         flow.response.stream = True
-        if self._spclient(flow):
+        if self._spclient(flow.request.host_header):
             flow.response.stream = False
 
     def response(self, flow: HTTPFlow) -> None:
         req_path = flow.request.path
-        req_host = flow.request.host_header
-        if self._spclient(flow):
+        if self._spclient(flow.request.host_header) and self._sp_path(req_path):
             if flow.response.status_code != 200:
                 logging.info(f"xxxxxxxx-spotify-protobuf-status-code-not-200-xxxxxxxx")
                 return
             if not isinstance(flow.response.content, bytes):
                 logging.info(f"xxxxxxxx-spotify-protobuf-not-bytes-xxxxxxxx")
                 return
-            if req_path.startswith("/bootstrap/v1/bootstrap"):
+            if "v1/bootstrap" in req_path:
                 logging.info(f"xxxxxxxx-spotify-protobuf-bootstrap-xxxxxxxx")
                 data = modify_spotify_body(flow.response.content, bootstrap=True)
             else:
@@ -274,12 +272,19 @@ class SpotifyHelper(TlsConfig):
             if data is not None:
                 flow.response.content = data
                     
-    def _spclient(self, flow: HTTPFlow) -> bool:
-        req_path = flow.request.path
-        req_host = flow.request.host_header
-        if req_host == "spclient.wg.spotify.com":
-            if (req_path.startswith("/user-customization-service/v1/customize")
-                    or req_path.startswith("/bootstrap/v1/bootstrap")):
+    def _spclient(self, host: str) -> bool:
+        if (host == "spclient.wg.spotify.com"
+                or "spclient.spotify.com" in host):
+            return True
+        return False
+
+    def _sp_path(self, req_path: str) -> bool:
+        paths = [
+                 'v1/customize',
+                 'v1/bootstrap',
+                ]
+        for path in paths:
+            if path in req_path:
                 return True
         return False
         
