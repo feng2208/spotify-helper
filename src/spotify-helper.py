@@ -16,11 +16,6 @@ from mitmproxy import tls
 from mitmproxy.addons.tlsconfig import TlsConfig
 from mitmproxy.proxy.server_hooks import ServerConnectionHookData
 
-from OpenSSL import SSL
-from OpenSSL.crypto import X509StoreContext
-from OpenSSL.crypto import X509StoreContextError
-from cryptography import x509
-
 import os
 import sys
 SRC_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -118,31 +113,6 @@ def modify_spotify_body(data, bootstrap=False):
 
     return None
 
-
-def verify_callback(conn, cert, error_n, error_depth, return_code) -> bool:
-    if return_code == 1:
-        return True
-
-    ctx = conn.get_context()
-    store = ctx.get_cert_store()
-    cert_chain = conn.get_peer_cert_chain()
-    try:
-        X509StoreContext(store, cert, cert_chain).verify_certificate()
-    except X509StoreContextError:
-        return False
-
-    if cert_chain[0].get_serial_number() == cert.get_serial_number():
-        crypto_cert = cert.to_cryptography()
-        ext = crypto_cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
-        dns_names = ext.value.get_values_for_type(x509.DNSName)
-        if conn.verify_host1 not in dns_names and conn.verify_host2 not in dns_names:
-            n_host1 = re.sub(r'^\w+\.', '*.', conn.verify_host1)
-            n_host2 = re.sub(r'^\w+\.', '*.', conn.verify_host2)
-            if n_host1 not in dns_names and n_host2 not in dns_names:
-                return False
-    return True
-
-
 @dataclass
 class Mapping:
     sni: str
@@ -210,15 +180,6 @@ class SpotifyHelper(TlsConfig):
             if mapping.address is not None:
                 data.context.server.address = mapping.address
                 logging.info(f"xxxxxxxx-tls-server-address: {mapping.address}")
-
-    def tls_start_server(self, tls_start: tls.TlsData) -> None:
-        super().tls_start_server(tls_start)
-        tls_start.ssl_conn.verify_host1 = tls_start.conn.sni
-        tls_start.ssl_conn.verify_host2 = tls_start.context.client.sni
-        if tls_start.conn.sni.startswith("_"):
-            tls_start.ssl_conn.set_tlsext_host_name(b"")
-            tls_start.ssl_conn.verify_host1 = tls_start.conn.sni[1:]
-        tls_start.ssl_conn.set_verify(SSL.VERIFY_PEER, verify_callback)
 
     def server_connect(self, data: ServerConnectionHookData) -> None:
         _host = data.server.address[0]
