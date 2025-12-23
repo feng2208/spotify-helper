@@ -1,0 +1,55 @@
+---
+# https://github.com/feng2208/spotify-helper
+
+# mappings:
+# - hosts:
+#     - example.com
+#     - "*.example.com" # 所有子域名
+#   sni: sni.example.com
+#   address: 100.1.1.1:443
+
+# dns:
+# - hosts:
+#     - example.com
+#     - "*.example.com" # 所有子域名
+#   ip: [client_cidr:192.168.2.2,]10.1.1.1
+
+
+
+
+mappings:
+- hosts:
+    - www.google.com
+  sni: www.recaptcha.net
+  address: 47.113.110.152:443
+
+- hosts:
+    - spclient.wg.spotify.com
+  sni: spclient.wg.spotify.com
+  address: 141.147.155.168:443
+
+- hosts:
+    - gae2-spclient.spotify.com
+  sni: gae2-spclient.spotify.com
+  address: 141.147.155.168:443
+
+
+
+dns:
+# https://apresolve.spotify.com/ 桌面版
+- hosts:
+    - ap-gue1.spotify.com
+    - ap-guc3.spotify.com
+    - ap-gew1.spotify.com
+    - ap-gew4.spotify.com
+    - ap-gae2.spotify.com
+    - accounts.spotify.com
+    - www.spotify.com
+  ip: 141.147.155.168
+
+- hosts:
+    - sp-mitm.it
+    - www.google.com
+    - spclient.wg.spotify.com
+    - gae2-spclient.spotify.com
+  ip: SERVER_IP
