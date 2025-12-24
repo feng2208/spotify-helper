@@ -1,9 +1,11 @@
 package dns
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -156,8 +158,20 @@ func (s *Server) forwardQuery(w dns.ResponseWriter, r *dns.Msg) {
 // forwardUDP forwards query using traditional DNS
 func (s *Server) forwardUDP(r *dns.Msg) (*dns.Msg, error) {
 	c := &dns.Client{Net: "udp"}
-	resp, _, err := c.Exchange(r, s.resolver.server)
-	return resp, err
+
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		resp, _, err := c.Exchange(r, s.resolver.server)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("forward failed after 3 attempts: %v", lastErr)
 }
 
 // forwardDoH forwards query using DNS-over-HTTPS

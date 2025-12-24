@@ -56,22 +56,32 @@ func (r *Resolver) resolveDNS(hostname string) (string, error) {
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
 	m.RecursionDesired = true
 
-	resp, _, err := c.Exchange(m, r.server)
-	if err != nil {
-		return "", fmt.Errorf("DNS query failed: %w", err)
-	}
-
-	if resp.Rcode != dns.RcodeSuccess {
-		return "", fmt.Errorf("DNS query returned error: %s", dns.RcodeToString[resp.Rcode])
-	}
-
-	for _, ans := range resp.Answer {
-		if a, ok := ans.(*dns.A); ok {
-			return a.A.String(), nil
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(500 * time.Millisecond)
 		}
+
+		resp, _, err := c.Exchange(m, r.server)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.Rcode != dns.RcodeSuccess {
+			return "", fmt.Errorf("DNS query returned error: %s", dns.RcodeToString[resp.Rcode])
+		}
+
+		for _, ans := range resp.Answer {
+			if a, ok := ans.(*dns.A); ok {
+				return a.A.String(), nil
+			}
+		}
+
+		return "", fmt.Errorf("no A record found for %s", hostname)
 	}
 
-	return "", fmt.Errorf("no A record found for %s", hostname)
+	return "", fmt.Errorf("DNS query failed after 3 attempts: %w", lastErr)
 }
 
 // resolveDoH resolves using DNS-over-HTTPS (RFC 8484)
