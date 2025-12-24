@@ -127,8 +127,22 @@ func Load(path string) (*Manager, error) {
 	}
 
 	// Process DNS overrides
+	outboundIP := ""
 	for _, entry := range cfg.DNS {
-		override, err := parseDNSIP(entry.IP)
+		ipField := entry.IP
+		if ipField == "" {
+			// Get outbound IP lazily if needed
+			if outboundIP == "" {
+				var err error
+				outboundIP, err = getOutboundIP()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get outbound IP for empty DNS entry: %w", err)
+				}
+			}
+			ipField = outboundIP
+		}
+
+		override, err := parseDNSIP(ipField)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse DNS IP for hosts %v: %w", entry.Hosts, err)
 		}
@@ -143,6 +157,18 @@ func Load(path string) (*Manager, error) {
 	}
 
 	return m, nil
+}
+
+// getOutboundIP gets the preferred outbound ip of this machine
+func getOutboundIP() (string, error) {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String(), nil
 }
 
 // GetMapping returns the mapping for a host, or nil if not found
