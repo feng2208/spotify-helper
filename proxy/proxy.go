@@ -355,7 +355,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	log.Printf("[SNI] %s", sni)
+	// log.Printf("[SNI] %s", sni)
 
 	// Clear read deadline
 	clientConn.SetReadDeadline(time.Time{})
@@ -367,7 +367,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	var targetAddr string
 	if mapping != nil && mapping.Address != "" {
 		targetAddr = mapping.Address
-		log.Printf("[Target] Using configured address: %s", targetAddr)
+		log.Printf("[Target] Using configured address: %s %s", sni, targetAddr)
 	} else {
 		// Resolve via upstream DNS (don't use config.yaml dns overrides for SNI proxy)
 		ip, err := s.resolver.Resolve(sni)
@@ -376,7 +376,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 			return
 		}
 		targetAddr = net.JoinHostPort(ip, "443")
-		log.Printf("[Target] Resolved via DNS: %s", targetAddr)
+		// log.Printf("[Target] Resolved via DNS: %s", targetAddr)
 	}
 
 	// Check if we should MITM this connection
@@ -384,7 +384,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		log.Printf("[MITM] Intercepting connection to %s (target SNI: %s)", sni, mapping.SNI)
 		s.handleMITM(clientConn, clientReader, clientHelloBytes, sni, targetAddr, mapping.SNI)
 	} else {
-		log.Printf("[Passthrough] Forwarding connection to %s", sni)
+		// log.Printf("[Passthrough] Forwarding connection to %s", sni)
 		s.handlePassthrough(clientConn, clientReader, clientHelloBytes, targetAddr)
 	}
 }
@@ -455,7 +455,7 @@ func (s *Server) handleMITM(clientConn net.Conn, clientReader *bufio.Reader, cli
 	}
 	defer targetConn.Close()
 
-	log.Printf("[MITM] TLS established with client and server")
+	//log.Printf("[MITM] TLS established with client and server")
 
 	// Handle HTTP traffic
 	s.handleHTTPTraffic(clientTLS, targetConn, sni)
@@ -478,13 +478,13 @@ func (s *Server) handleHTTPTraffic(clientConn *tls.Conn, serverConn *tls.Conn, s
 		}
 
 		reqPath := req.URL.Path
-		log.Printf("[HTTP] %s %s%s", req.Method, sni, reqPath)
+		// log.Printf("[HTTP] %s %s%s", req.Method, sni, reqPath)
 
 		// Spotify-specific request handling
 		if isSpotify {
 			// Block ads and trackers
 			if spotify.ShouldBlockPath(reqPath) {
-				log.Printf("[Spotify] Blocking: %s", reqPath)
+				//log.Printf("[Spotify] Blocking: %s", reqPath)
 				// Drain request body to keep connection alive for next request
 				if req.Body != nil {
 					io.Copy(io.Discard, req.Body)
@@ -538,13 +538,13 @@ func (s *Server) handleHTTPTraffic(clientConn *tls.Conn, serverConn *tls.Conn, s
 
 			// Try to modify the protobuf response
 			isBootstrap := strings.Contains(reqPath, "v1/bootstrap")
-			log.Printf("[Spotify-MITM] Checking Host=%s Path=%s for Protobuf modification", req.Host, reqPath)
+			// log.Printf("[Spotify-MITM] Checking Host=%s Path=%s for Protobuf modification", req.Host, reqPath)
 
 			if modifiedBody, err := spotify.ModifyProtobufResponse(body, isBootstrap); err == nil && modifiedBody != nil {
 				log.Printf("[Spotify-MITM] Protobuf Modified: YES (Host=%s Path=%s)", req.Host, reqPath)
 				body = modifiedBody
 			} else {
-				log.Printf("[Spotify-MITM] Protobuf Modified: NO (Host=%s Path=%s)", req.Host, reqPath)
+				// log.Printf("[Spotify-MITM] Protobuf Modified: NO (Host=%s Path=%s)", req.Host, reqPath)
 			}
 
 			// Update content length and body
