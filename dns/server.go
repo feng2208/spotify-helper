@@ -65,7 +65,7 @@ func (s *Server) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	q := r.Question[0]
-	log.Printf("[DNS] Query: %s %s from %s", dns.TypeToString[q.Qtype], q.Name, clientIP)
+	// log.Printf("[DNS] Query: %s %s from %s", dns.TypeToString[q.Qtype], q.Name, clientIP)
 
 	// Only handle A and AAAA queries
 	if q.Qtype != dns.TypeA && q.Qtype != dns.TypeAAAA {
