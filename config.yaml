@@ -12,9 +12,7 @@
 # - hosts:
 #     - example.com
 #     - "*.example.com" # 所有子域名
-#   ip: [client_cidr:192.168.2.2,]10.1.1.1
-
-
+#   ip: [client_cidr:192.168.2.2,]10.1.1.1 # 不设置则使用本机 IP
 
 
 mappings:
@@ -31,25 +29,24 @@ mappings:
 - hosts:
     - gae2-spclient.spotify.com
   sni: gae2-spclient.spotify.com
-  address: 141.147.155.168:443
 
 
 
 dns:
-# https://apresolve.spotify.com/ 桌面版
 - hosts:
+    ### spotify
+    - accounts.spotify.com
+    - www.spotify.com
+    # https://apresolve.spotify.com/ 桌面版
     - ap-gue1.spotify.com
     - ap-guc3.spotify.com
     - ap-gew1.spotify.com
     - ap-gew4.spotify.com
     - ap-gae2.spotify.com
-    - accounts.spotify.com
-    - www.spotify.com
   ip: 141.147.155.168
 
 - hosts:
     - sp-mitm.it
     - www.google.com
-    - spclient.wg.spotify.com
-    - gae2-spclient.spotify.com
-  ip: SERVER_IP
+    - "*.spotify.com"
+
