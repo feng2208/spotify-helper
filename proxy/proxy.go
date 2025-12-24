@@ -367,7 +367,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	var targetAddr string
 	if mapping != nil && mapping.Address != "" {
 		targetAddr = mapping.Address
-		log.Printf("[Target] Using configured address: %s %s", sni, targetAddr)
+		log.Printf("[Target] %s %s", sni, targetAddr)
 	} else {
 		// Resolve via upstream DNS (don't use config.yaml dns overrides for SNI proxy)
 		ip, err := s.resolver.Resolve(sni)
@@ -381,7 +381,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 
 	// Check if we should MITM this connection
 	if mapping != nil && mapping.SNI != "" {
-		log.Printf("[MITM] Intercepting connection to %s (target SNI: %s)", sni, mapping.SNI)
+		log.Printf("[MITM] %s (sni: %s)", sni, mapping.SNI)
 		s.handleMITM(clientConn, clientReader, clientHelloBytes, sni, targetAddr, mapping.SNI)
 	} else {
 		// log.Printf("[Passthrough] Forwarding connection to %s", sni)
