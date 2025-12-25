@@ -81,7 +81,7 @@ func (s *Server) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 	// Check for override, passing client IP for CIDR matching
 	if ip := s.getOverride(name, clientIP); ip != "" {
-		log.Printf("[DNS] Override: %s -> %s", name, ip)
+		log.Printf("[DNS] Override: %s -> %s (for %s)", name, ip, clientIP)
 
 		switch q.Qtype {
 		case dns.TypeA:
