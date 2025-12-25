@@ -381,7 +381,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 
 	// Check if we should MITM this connection
 	if mapping != nil && mapping.SNI != "" {
-		log.Printf("[MITM] %s (sni: %s)", sni, mapping.SNI)
+		log.Printf("[MITM] %s -> %s (sni: %s)", clientConn.RemoteAddr(), sni, mapping.SNI)
 		s.handleMITM(clientConn, clientReader, clientHelloBytes, sni, targetAddr, mapping.SNI)
 	} else {
 		// log.Printf("[Passthrough] Forwarding connection to %s", sni)
