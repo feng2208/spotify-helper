@@ -31,6 +31,7 @@ CONFIG_FILE = SRC_DIR + "/config.yaml"
 
 SPOTS = {
     'player-license': 'premium',
+    'player-license-v2': 'premium',
     'streaming-rules': '',
     'financial-product': 'pr:premium,tc:0',
     'name': 'Spotify Premium',
@@ -40,21 +41,14 @@ SPOTS = {
     'high-bitrate': 1,
     'nft-disabled': '1',
     'offline': 1,
-    'pause-after': 0,
     'can_use_superbird': 1,
     'type': 'premium',
-    'com.spotify.madprops.use.ucs.product.state': 1,
-    'com.spotify.madprops.delivered.by.ucs': 1,
-    'payments-initial-campaign': 'default',
-    'unrestricted': 1,
-    'shuffle-eligible': 1,
     'social-session': 1,
     'social-session-free-tier': 0,
+    'is-eligible-premium-unboxing': 1,
 }
 
 SPOTS_DEL = [
-    'ad-use-adlogic',
-    'ad-catalogues',
 ]
 
 
