@@ -161,6 +161,9 @@ class SpotifyHelper(TlsConfig):
         data.ignore_connection = True
         host = data.context.client.sni
 
+        if data.context.server.address is None and host is not None:
+            data.context.server.address = (host, 443)
+            
         if self._spclient(host):
             data.ignore_connection = False
 
