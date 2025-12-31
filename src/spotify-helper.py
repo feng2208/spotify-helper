@@ -209,7 +209,7 @@ class SpotifyHelper(TlsConfig):
 
     def responseheaders(self, flow: HTTPFlow) -> None:
         flow.response.stream = True
-        if self._spclient(flow.request.host_header):
+        if self._spclient(flow.request.host_header) and self._sp_path(flow.request.path):
             flow.response.stream = False
 
     def response(self, flow: HTTPFlow) -> None:
