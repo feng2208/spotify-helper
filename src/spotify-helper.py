@@ -48,8 +48,7 @@ SPOTS = {
     'is-eligible-premium-unboxing': 1,
 }
 
-SPOTS_DEL = [
-]
+SPOTS_DEL = []
 
 
 # spotify ptotobuf
