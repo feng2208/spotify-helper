@@ -16,6 +16,9 @@ from mitmproxy import tls
 from mitmproxy.addons.tlsconfig import TlsConfig
 from mitmproxy.proxy.server_hooks import ServerConnectionHookData
 
+import hashlib
+import struct
+
 import os
 import sys
 SRC_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -50,6 +53,7 @@ SPOTS = {
 
 SPOTS_DEL = []
 
+TLS_CLIENTS = {}
 
 # spotify ptotobuf
 def modify_spotify_body(data, bootstrap=False):
@@ -162,7 +166,7 @@ class SpotifyHelper(TlsConfig):
 
         if data.context.server.address is None and host is not None:
             data.context.server.address = (host, 443)
-            
+
         if self._spclient(host):
             data.ignore_connection = False
 
@@ -171,11 +175,27 @@ class SpotifyHelper(TlsConfig):
             logging.info(f"xxxxxxxx-tls-server-host: {host}")
             if mapping.sni is not None:
                 data.ignore_connection = False
-                data.context.server.sni = mapping.sni
+                data.context.client.server_sni = mapping.sni
                 logging.info(f"xxxxxxxx-tls-server-sni: {mapping.sni}")
             if mapping.address is not None:
-                data.context.server.address = mapping.address
+                data.context.client.server_address = mapping.address
                 logging.info(f"xxxxxxxx-tls-server-address: {mapping.address}")
+
+        if not data.ignore_connection:
+            ja3 = self._get_ja3(data)
+            if ja3 is not None:
+                data.context.client.ja3 = ja3
+                if ja3 in TLS_CLIENTS and TLS_CLIENTS.get(ja3) > 2:
+                    data.ignore_connection = True
+
+    def tls_failed_client(self, data: tls.TlsData) -> None:
+        if hasattr(data.conn, "ja3"):
+            logging.info(f"xxxxxxxx-tls-client-failed-ja3: {data.conn.ja3}")
+            logging.info(f"xxxxxxxx-tls-client-failed-sni: {data.conn.sni}")
+            if data.conn.ja3 in TLS_CLIENTS:
+                TLS_CLIENTS[data.conn.ja3] += 1
+            else:
+                TLS_CLIENTS[data.conn.ja3] = 1
 
     def server_connect(self, data: ServerConnectionHookData) -> None:
         _host = data.server.address[0]
@@ -185,9 +205,15 @@ class SpotifyHelper(TlsConfig):
             data.server.address = (host, port)
             logging.info(f"xxxxxxxx-spotify-ap: {_host} {data.server.address}")
 
+        else:
+            if hasattr(data.client, "server_address"):
+                data.server.address = data.client.server_address
+            if hasattr(data.client, "server_sni"):
+                data.server.sni = data.client.server_sni
+
     def server_connect_error(self, data: ServerConnectionHookData) -> None:
         logging.info(f"connect error: {data.server.address[0]}:{data.server.address[1]}")
-        
+
     def requestheaders(self, flow: HTTPFlow) -> None:
         flow.request.stream = True
         req_path = flow.request.path
@@ -291,6 +317,82 @@ class SpotifyHelper(TlsConfig):
             index += 1
 
         return None
+
+    def _get_ja3(self, data: tls.TlsClientHelloData) -> str | None:
+        # GREASE 过滤表
+        GREASE_TABLE = {
+            0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
+            0x8a8a, 0x9a9a, 0xaaaa, 0xbaba, 0xcaca, 0xdada, 0xeaea, 0xfafa
+        }
+
+        try:
+            ch = data.client_hello
+            raw_bytes = ch.raw_bytes()
+
+            # ==========================================
+            # 1. 智能定位 TLS Version: 771 (0x0303)
+            # ==========================================
+            tls_version = 0
+
+            # 检查 Byte 0 是否是 0x16 (TLS Record Content Type)
+            if raw_bytes[0] == 0x16:
+                # 情况 A: 包含 Record Header (5字节) + Handshake Header (4字节)
+                # 目标版本号在第 9 和 10 字节 (Index 9:11)
+                # 结构: [16 03 01 LL LL] [01 LL LL LL] [VV VV]
+                tls_version = struct.unpack('!H', raw_bytes[9:11])[0]
+
+            elif raw_bytes[0] == 0x01:
+                # 情况 B: 仅包含 Handshake Header (4字节)
+                # 目标版本号在第 4 和 5 字节 (Index 4:6)
+                # 结构: [01 LL LL LL] [VV VV]
+                tls_version = struct.unpack('!H', raw_bytes[4:6])[0]
+
+            else:
+                return None
+
+            # ==========================================
+            # 2. 提取其他字段 (Ciphers, Exts...)
+            # ==========================================
+            # Ciphers
+            ciphers = [c for c in ch.cipher_suites if c not in GREASE_TABLE]
+
+            # Extensions
+            extensions = [ext[0] for ext in ch.extensions if ext[0] not in GREASE_TABLE]
+
+            # Curves & Points (简化演示，实际需解析 payload)
+            ec_curves = []
+            ec_point_formats = []
+
+            # 解析扩展的具体内容 (Extension ID 10 和 11)
+            for ext_id, ext_data in ch.extensions:
+                if ext_id == 10: # Supported Groups
+                     if len(ext_data) >= 2:
+                        count = (len(ext_data) - 2) // 2
+                        fmt = f"!{count}H"
+                        curves = struct.unpack(fmt, ext_data[2:2 + count * 2])
+                        ec_curves = [c for c in curves if c not in GREASE_TABLE]
+                elif ext_id == 11: # EC Point Formats
+                    if len(ext_data) >= 1:
+                        count = len(ext_data) - 1
+                        fmt = f"{count}B"
+                        formats = struct.unpack(fmt, ext_data[1:1 + count])
+                        ec_point_formats = [f for f in formats if f not in GREASE_TABLE]
+
+            # ==========================================
+            # 3. 构造 JA3
+            # ==========================================
+            ja3_raw = ",".join([
+                str(tls_version),
+                "-".join(str(c) for c in ciphers),
+                "-".join(str(e) for e in extensions),
+                "-".join(str(c) for c in ec_curves),
+                "-".join(str(f) for f in ec_point_formats)
+            ])
+
+            return hashlib.md5(ja3_raw.encode()).hexdigest()
+
+        except Exception as e:
+            return None
 
 
 addons = [SpotifyHelper()]
