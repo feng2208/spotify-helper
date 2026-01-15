@@ -31,4 +31,5 @@ mappings:
     - accounts.spotify.com
     - www.spotify.com
     - spclient.wg.spotify.com
+    - login5.spotify.com
   address: 141.147.155.168:443
