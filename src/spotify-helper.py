@@ -15,6 +15,7 @@ from mitmproxy.http import Response
 from mitmproxy import tls
 from mitmproxy.addons.tlsconfig import TlsConfig
 from mitmproxy.proxy.server_hooks import ServerConnectionHookData
+import json
 
 import hashlib
 import struct
@@ -52,8 +53,33 @@ SPOTS = {
 }
 
 SPOTS_DEL = []
-
 TLS_CLIENTS = {}
+
+# pac
+HOST_LIST = []
+
+
+def generate_pac_content(domains, proxy_server):
+    """
+    构造 PAC 文件的 JavaScript 内容。
+    使用 shExpMatch 函数来处理通配符匹配。
+    """
+    # 将 Python 列表转换为 JSON 格式的字符串，以便在 JS 中作为数组使用
+    domains_json = json.dumps(domains, indent=8)
+
+    js_content = f"""
+function FindProxyForURL(url, host) {{
+    var rules = {domains_json};
+    var proxy = "{proxy_server}";
+    for (var i = 0; i < rules.length; i++) {{
+        if (shExpMatch(host, rules[i])) {{
+            return proxy;
+        }}
+    }}
+    return "DIRECT";
+}}
+"""
+    return js_content
 
 # spotify ptotobuf
 def modify_spotify_body(data, bootstrap=False):
@@ -232,6 +258,16 @@ class SpotifyHelper(TlsConfig):
                 if 'if-none-match' in flow.request.headers:
                     del flow.request.headers['if-none-match']
 
+        elif req_path == "/proxy.pac":
+            proxy_server = f"PROXY {flow.request.host_header}"
+            pac_content = generate_pac_content(HOST_LIST, proxy_server)
+            flow.response = Response.make(
+                200,
+                pac_content,
+                {"Content-Type": "application/x-ns-proxy-autoconfig"}
+            )
+            logging.info(f"Served PAC to {flow.client_conn.peername}")
+
     def responseheaders(self, flow: HTTPFlow) -> None:
         flow.response.stream = True
         if self._spclient(flow.request.host_header) and self._sp_path(flow.request.path):
@@ -287,6 +323,7 @@ class SpotifyHelper(TlsConfig):
                         address=address,
                    )
             for host in mapping["hosts"]:
+                HOST_LIST.append(host)
                 if host.startswith("*."):
                     star_mappings[host[2:]] = item
                     if sni is not None:
@@ -318,7 +355,7 @@ class SpotifyHelper(TlsConfig):
 
         return None
 
-    def _get_ja3(self, data: tls.TlsClientHelloData) -> str | None:
+    def _get_ja3(self, data: tls.ClientHelloData) -> str | None:
         # GREASE 过滤表
         GREASE_TABLE = {
             0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
