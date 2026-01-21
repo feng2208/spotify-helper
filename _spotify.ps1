@@ -74,74 +74,68 @@ $TargetAddr = "`"$ProxyHost`:$ProxyPort@http`""  # 目标格式: "IP:Port@http"
 # --- 1. 检查是否已经设置了正确的 HTTP Proxy ---
 if (-not (Test-Path $PrefsPath)) {
     Write-Warning "未找到配置文件，请先运行一次 spotify。"
-    exit
 }
-
-
-$CurrentContent = Get-Content $PrefsPath
+else {
+    $CurrentContent = Get-Content $PrefsPath
     
-# 检查是否存在 mode=2 (HTTP) 且地址匹配
-$HasCorrectMode = $CurrentContent -match "^network.proxy.mode=2$"
-$HasCorrectAddr = $CurrentContent -match "network.proxy.addr=$TargetAddr"
+    # 检查是否存在 mode=2 (HTTP) 且地址匹配
+    $HasCorrectMode = $CurrentContent -match "^network.proxy.mode=2$"
+    $HasCorrectAddr = $CurrentContent -match "network.proxy.addr=$TargetAddr"
 
-if ($HasCorrectMode -and $HasCorrectAddr) {
-    Write-Host "✅ Spotify 已经配置为 HTTP 代理 ($ProxyHost`:$ProxyPort)，无需操作。" -ForegroundColor Green
+    if ($HasCorrectMode -and $HasCorrectAddr) {
+        Write-Host "✅ Spotify 已经配置为 HTTP 代理 ($ProxyHost`:$ProxyPort)，无需操作。" -ForegroundColor Green
 
-} else {
-    Write-Host "检测到代理未配置或配置不匹配，开始执行设置流程..." -ForegroundColor Yellow
-
-    # --- 2. 检查 Spotify 是否在运行，如果是则关闭 ---
-    $RunningProc = Get-Process spotify -ErrorAction SilentlyContinue
-    $WasRunning = $false
-
-    if ($RunningProc) {
-        Write-Host "检测到 Spotify 正在运行，正在关闭进程..." -ForegroundColor Cyan
-        $WasRunning = $true # 标记状态：之前是运行的
-    
-        # 强制停止进程
-        $RunningProc | Stop-Process -Force
-    
-        # 重要：等待文件句柄释放，防止写入配置失败
-        Start-Sleep -Seconds 2 
-        Write-Host "Spotify 已关闭。" -ForegroundColor Gray
     } else {
-        Write-Host "Spotify 当前未运行。" -ForegroundColor Gray
-    }
+        Write-Host "检测到代理未配置或配置不匹配，开始执行设置流程..." -ForegroundColor Yellow
 
-    # --- 3. 设置 Spotify 的 HTTP Proxy ---
-    Write-Host "正在修改配置文件..." -ForegroundColor Cyan
-    $Content = Get-Content $PrefsPath
+        # --- 2. 检查 Spotify 是否在运行，如果是则关闭 ---
+        $RunningProc = Get-Process spotify -ErrorAction SilentlyContinue
+        $WasRunning = $false
+
+        if ($RunningProc) {
+            Write-Host "检测到 Spotify 正在运行，正在关闭进程..." -ForegroundColor Cyan
+            $WasRunning = $true # 标记状态：之前是运行的
     
-    # 移除旧的代理设置 (防止重复)
-    $CleanContent = $Content | Where-Object { 
-        $_ -notmatch "network.proxy.mode" -and 
-        $_ -notmatch "network.proxy.addr" 
-    }
-
-    # 添加新的设置
-    $NewSettings = @(
-        "network.proxy.mode=2",
-        "network.proxy.addr=$TargetAddr"
-    )
-
-    # 写入文件
-    $CleanContent + $NewSettings | Set-Content $PrefsPath -Encoding UTF8
-    Write-Host "代理已设置为 HTTP -> $ProxyHost`:$ProxyPort" -ForegroundColor Green
-
-    # --- 4. 如果之前 Spotify 是运行的，则重新启动 ---
-    if ($WasRunning) {
-        if (Test-Path $SpotifyExe) {
-            Write-Host "之前 Spotify 处于运行状态，正在重新启动..." -ForegroundColor Cyan
-            Start-Process -FilePath $SpotifyExe
-            Write-Host "Spotify 重启完成。" -ForegroundColor Green
-        } else {
-            Write-Error "找不到 Spotify 可执行文件，无法自动重启。"
+            # 强制停止进程
+            $RunningProc | Stop-Process -Force
+    
+            # 重要：等待文件句柄释放，防止写入配置失败
+            Start-Sleep -Seconds 2 
+            Write-Host "Spotify 已关闭。" -ForegroundColor Gray
         }
-    } else {
-        Write-Host "之前 Spotify 未运行，因此不进行自动启动。" -ForegroundColor Gray
+
+        # --- 3. 设置 Spotify 的 HTTP Proxy ---
+        Write-Host "正在修改配置文件..." -ForegroundColor Cyan
+        $Content = Get-Content $PrefsPath
+    
+        # 移除旧的代理设置 (防止重复)
+        $CleanContent = $Content | Where-Object { 
+            $_ -notmatch "network.proxy.mode" -and 
+            $_ -notmatch "network.proxy.addr" 
+        }
+
+        # 添加新的设置
+        $NewSettings = @(
+            "network.proxy.mode=2",
+            "network.proxy.addr=$TargetAddr"
+        )
+
+        # 写入文件
+        $CleanContent + $NewSettings | Set-Content $PrefsPath -Encoding UTF8
+        Write-Host "代理已设置为 HTTP -> $ProxyHost`:$ProxyPort" -ForegroundColor Green
+
+        # --- 4. 如果之前 Spotify 是运行的，则重新启动 ---
+        if ($WasRunning) {
+            if (Test-Path $SpotifyExe) {
+                Write-Host "之前 Spotify 处于运行状态，正在重新启动..." -ForegroundColor Cyan
+                Start-Process -FilePath $SpotifyExe
+                Write-Host "Spotify 重启完成。" -ForegroundColor Green
+            } else {
+                Write-Error "找不到 Spotify 可执行文件，无法自动重启。"
+            }
+        }
     }
 }
-
 
 
 
