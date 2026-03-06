@@ -24,6 +24,7 @@ mappings:
 ### spotify
 - hosts:
     - www.google.com
+    - "*.gstatic.com"
   sni: www.recaptcha.net
   address: 47.113.110.152:443
 
