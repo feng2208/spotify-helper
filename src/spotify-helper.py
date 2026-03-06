@@ -45,8 +45,21 @@ SPOTS = {
     'high-bitrate': 1,
     'nft-disabled': '1',
     'offline': 1,
-    'can_use_superbird': 1,
     'type': 'premium',
+    'social-session': 1,
+    'social-session-free-tier': 0,
+    'is-eligible-premium-unboxing': 1,
+}
+
+SPOTS_NEW = {
+    'on-demand': 1,
+    'player-license': 'premium',
+    'player-license-v2': 'premium',
+    'streaming-rules': '',
+    'catalogue': 'premium',
+    'high-bitrate': 1,
+    'nft-disabled': '1',
+    'offline': 1,
     'social-session': 1,
     'social-session-free-tier': 0,
     'is-eligible-premium-unboxing': 1,
@@ -58,6 +71,10 @@ TLS_CLIENTS = {}
 # pac
 HOST_LIST = []
 
+
+def is_new_version(new_version: str) -> bool:
+    old_version = (9, 1, 14) # iOS 9.1.14
+    return tuple(map(int, new_version.split('.')))[:3] > old_version
 
 def generate_pac_content(domains, proxy_server):
     """
@@ -82,7 +99,7 @@ function FindProxyForURL(url, host) {{
     return js_content
 
 # spotify ptotobuf
-def modify_spotify_body(data, bootstrap=False):
+def modify_spotify_body(data, attributes, bootstrap=False):
     try:
         logging.info(f"xxxxxxxx-spotify-protobuf-decode-xxxxxxxx")
         message, typedef = blackboxprotobuf.decode_message(data)
@@ -99,7 +116,7 @@ def modify_spotify_body(data, bootstrap=False):
     if isinstance(configs, list):
         for config in configs:
             # config: {'1': 'attr_key', '2': {'value_key': 'value'}}
-            # SPOTS: {'attr_key': 'value'}
+            # attributes: {'attr_key': 'value'}
             if not isinstance(config, dict):
                 continue
             if '1' not in config or '2' not in config:
@@ -109,8 +126,8 @@ def modify_spotify_body(data, bootstrap=False):
 
             attr_key = config['1']
             value_key = list(config['2'].keys())[0]
-            if attr_key in SPOTS:
-                config['2'][value_key] = SPOTS[attr_key]
+            if attr_key in attributes:
+                config['2'][value_key] = attributes[attr_key]
                 changed = True
             elif attr_key in SPOTS_DEL:
                 configs.remove(config)
@@ -282,15 +299,25 @@ class SpotifyHelper(TlsConfig):
             if not isinstance(flow.response.content, bytes):
                 logging.info(f"xxxxxxxx-spotify-protobuf-not-bytes-xxxxxxxx")
                 return
+
+            attributes = self._get_attributes(flow)
             if "v1/bootstrap" in req_path:
                 logging.info(f"xxxxxxxx-spotify-protobuf-bootstrap-xxxxxxxx")
-                data = modify_spotify_body(flow.response.content, bootstrap=True)
+                data = modify_spotify_body(flow.response.content, attributes, bootstrap=True)
             else:
                 logging.info(f"xxxxxxxx-spotify-protobuf-customize-xxxxxxxx")
-                data = modify_spotify_body(flow.response.content)
+                data = modify_spotify_body(flow.response.content, attributes)
             if data is not None:
                 flow.response.content = data
-                    
+
+    def _get_attributes(self, flow: HTTPFlow) -> dict:
+        if "app-platform" in flow.request.headers and "spotify-app-version" in flow.request.headers:
+            sp_platform = flow.request.headers["app-platform"]
+            sp_version = flow.request.headers["spotify-app-version"]
+            if sp_platform == "Android" or (sp_platform == "iOS" and is_new_version(sp_version)):
+                return SPOTS_NEW
+        return SPOTS
+
     def _spclient(self, host: str) -> bool:
         if (host == "spclient.wg.spotify.com"
                 or "spclient.spotify.com" in host):
