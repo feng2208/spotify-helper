@@ -58,7 +58,6 @@ SPOTS_NEW = {
     'streaming-rules': '',
     'catalogue': 'premium',
     'high-bitrate': 1,
-    'nft-disabled': '1',
     'offline': 1,
     'social-session': 1,
     'social-session-free-tier': 0,
