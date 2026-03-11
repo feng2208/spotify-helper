@@ -1,6 +1,6 @@
 # https://github.com/feng2208/spotify-helper
 
-# mitmdump -s src/spotify-helper.py -p 8180 
+# mitmdump -s src/spotify-helper.py -p 8180 --set flow_detail=0
 # deps:
 #   blackboxprotobuf v1.4.0 https://github.com/nccgroup/blackboxprotobuf
 #   six v1.16.0 https://github.com/benjaminp/six
@@ -8,6 +8,8 @@
 
 import logging
 from dataclasses import dataclass
+
+from mitmproxy import ctx
 
 from mitmproxy.addonmanager import Loader
 from mitmproxy.http import HTTPFlow
@@ -51,28 +53,18 @@ SPOTS = {
     'is-eligible-premium-unboxing': 1,
 }
 
-SPOTS_NEW = {
-    'on-demand': 1,
-    'player-license': 'premium',
-    'player-license-v2': 'premium',
-    'streaming-rules': '',
-    'catalogue': 'premium',
-    'high-bitrate': 1,
-    'offline': 1,
-    'social-session': 1,
-    'social-session-free-tier': 0,
-    'is-eligible-premium-unboxing': 1,
-}
-
 SPOTS_DEL = []
 TLS_CLIENTS = {}
+
+# spotify signup
+SIGNUP_MODE = False
 
 # pac
 HOST_LIST = []
 
 
 def is_new_version(new_version: str) -> bool:
-    old_version = (9, 1, 14) # iOS 9.1.14
+    old_version = (100, 1, 28) # iOS 100.1.28 always False for now
     return tuple(map(int, new_version.split('.')))[:3] > old_version
 
 def generate_pac_content(domains, proxy_server):
@@ -107,10 +99,24 @@ def modify_spotify_body(data, attributes, bootstrap=False):
         return None
 
     if bootstrap:
-        configs = message['2']['1']['1']['1']['3']['1']
+        changed = change_attributes(message['2']['1']['1']['1']['3']['1'], attributes)
     else:
-        configs = message['1']['3']['1']
+        changed = change_attributes(message['1']['3']['1'], attributes)
 
+    if changed:
+        try:
+            logging.info(f"xxxxxxxx-spotify-protobuf-changed-xxxxxxxx")
+            logging.info(f"xxxxxxxx-spotify-protobuf-encode-xxxxxxxx")
+            return blackboxprotobuf.encode_message(message, typedef)
+        except BlackboxProtobufException:
+            logging.info(f"xxxxxxxx-spotify-protobuf-encode-Error-xxxxxxxx")
+    else:
+        logging.info(f"xxxxxxxx-spotify-protobuf-not-changed-xxxxxxxx")
+        logging.info(f"xxxxxxxx-spotify-protobuf-need-to-update-code-xxxxxxxx")
+
+    return None
+
+def change_attributes(configs: list, attributes: dict) -> bool:
     changed = False
     if isinstance(configs, list):
         for config in configs:
@@ -131,26 +137,7 @@ def modify_spotify_body(data, attributes, bootstrap=False):
             elif attr_key in SPOTS_DEL:
                 configs.remove(config)
                 changed = True
-
-        if bootstrap:
-            message['2']['1']['1']['1']['3']['1'] = configs
-        else:
-            message['1']['3']['1'] = configs
-
-        if changed:
-            logging.info(f"xxxxxxxx-spotify-protobuf-changed-xxxxxxxx")
-            try:
-                logging.info(f"xxxxxxxx-spotify-protobuf-encode-xxxxxxxx")
-                data = blackboxprotobuf.encode_message(message, typedef)
-                return data
-            except BlackboxProtobufException:
-                logging.info(f"xxxxxxxx-spotify-protobuf-encode-Error-xxxxxxxx")
-
-    if not changed:
-        logging.info(f"xxxxxxxx-spotify-protobuf-not-changed-xxxxxxxx")
-        logging.info(f"xxxxxxxx-spotify-protobuf-need-to-update-code-xxxxxxxx")
-
-    return None
+    return changed
 
 @dataclass
 class Mapping:
@@ -206,10 +193,16 @@ class SpotifyHelper(TlsConfig):
         data.ignore_connection = True
         host = data.context.client.sni
 
+        # sni proxy
         if data.context.server.address is None and host is not None:
             data.context.server.address = (host, 443)
 
-        if self._spclient(host):
+        global SIGNUP_MODE
+        # signup finished
+        if host in ['login5.spotify.com']:
+            SIGNUP_MODE = False
+
+        if self._spclient(host) and not SIGNUP_MODE:
             data.ignore_connection = False
 
         mapping = self._get_sni(host)
@@ -224,6 +217,7 @@ class SpotifyHelper(TlsConfig):
                 logging.info(f"xxxxxxxx-tls-server-address: {mapping.address}")
 
         if not data.ignore_connection:
+            # ignore connection after not trusting our CA 3 times
             ja3 = self._get_ja3(data)
             if ja3 is not None:
                 data.context.client.ja3 = ja3
@@ -241,6 +235,7 @@ class SpotifyHelper(TlsConfig):
 
     def server_connect(self, data: ServerConnectionHookData) -> None:
         _host = data.server.address[0]
+        # desktop version prevent automatic logout after 14 days
         if _host in self.yaml_config['spotify_ap']:
             host = self.yaml_config['spotify_ap_address'].split(':')[0]
             port = int(self.yaml_config['spotify_ap_address'].split(':')[1])
@@ -254,7 +249,7 @@ class SpotifyHelper(TlsConfig):
                 data.server.sni = data.client.server_sni
 
     def server_connect_error(self, data: ServerConnectionHookData) -> None:
-        logging.info(f"connect error: {data.server.address[0]}:{data.server.address[1]}")
+        logging.info(f"error connect: {data.server.address[0]}:{data.server.address[1]}")
 
     def requestheaders(self, flow: HTTPFlow) -> None:
         flow.request.stream = True
@@ -273,6 +268,17 @@ class SpotifyHelper(TlsConfig):
             elif self._sp_path(req_path):
                 if 'if-none-match' in flow.request.headers:
                     del flow.request.headers['if-none-match']
+            # signup mode
+            elif '/signup/' in req_path:
+                global SIGNUP_MODE
+                SIGNUP_MODE = True
+                logging.info(f"xxxxxxxx-spotify-signup-mode-xxxxxxxx")
+                flow.kill()
+                server = ctx.master.addons.get("proxyserver")
+                if server:
+                    handler = server.connections.get(flow.client_conn.id)
+                    if handler:
+                        handler.close_connection(flow.client_conn, False)
 
         elif req_path == "/proxy.pac":
             proxy_server = f"PROXY {flow.request.host_header}"
@@ -286,12 +292,12 @@ class SpotifyHelper(TlsConfig):
 
     def responseheaders(self, flow: HTTPFlow) -> None:
         flow.response.stream = True
-        if self._spclient(flow.request.host_header) and self._sp_path(flow.request.path):
+        if self._should_modify(flow):
             flow.response.stream = False
 
     def response(self, flow: HTTPFlow) -> None:
         req_path = flow.request.path
-        if self._spclient(flow.request.host_header) and self._sp_path(req_path):
+        if self._should_modify(flow):
             if flow.response.status_code != 200:
                 logging.info(f"xxxxxxxx-spotify-protobuf-status-code-not-200-xxxxxxxx")
                 return
@@ -299,40 +305,41 @@ class SpotifyHelper(TlsConfig):
                 logging.info(f"xxxxxxxx-spotify-protobuf-not-bytes-xxxxxxxx")
                 return
 
-            attributes = self._get_attributes(flow)
             if "v1/bootstrap" in req_path:
                 logging.info(f"xxxxxxxx-spotify-protobuf-bootstrap-xxxxxxxx")
-                data = modify_spotify_body(flow.response.content, attributes, bootstrap=True)
+                data = modify_spotify_body(flow.response.content, SPOTS, bootstrap=True)
             else:
                 logging.info(f"xxxxxxxx-spotify-protobuf-customize-xxxxxxxx")
-                data = modify_spotify_body(flow.response.content, attributes)
+                data = modify_spotify_body(flow.response.content, SPOTS)
             if data is not None:
                 flow.response.content = data
 
-    def _get_attributes(self, flow: HTTPFlow) -> dict:
-        if "app-platform" in flow.request.headers and "spotify-app-version" in flow.request.headers:
-            sp_platform = flow.request.headers["app-platform"]
-            sp_version = flow.request.headers["spotify-app-version"]
-            if sp_platform == "Android" or (sp_platform == "iOS" and is_new_version(sp_version)):
-                return SPOTS_NEW
-        return SPOTS
-
     def _spclient(self, host: str) -> bool:
         if (host == "spclient.wg.spotify.com"
-                or "spclient.spotify.com" in host):
+                or "-spclient.spotify.com" in host):
             return True
         return False
 
     def _sp_path(self, req_path: str) -> bool:
-        paths = [
-                 'v1/customize',
-                 'v1/bootstrap',
-                ]
-        for path in paths:
-            if path in req_path:
-                return True
-        return False
-        
+        return 'v1/customize' in req_path or 'v1/bootstrap' in req_path
+
+    def _should_modify(self, flow: HTTPFlow) -> bool:
+        should_modify = False
+        if self._spclient(flow.request.host_header) and self._sp_path(flow.request.path):
+            should_modify = True
+            if ('app-platform' in flow.request.headers 
+                    and 'spotify-app-version' in flow.request.headers):
+                sp_platform = flow.request.headers["app-platform"]
+                sp_version = flow.request.headers["spotify-app-version"]
+                logging.info(f"xxxxxxxx-spotify-version: {sp_platform}/{sp_version}")
+
+                # do not modify when on android or iOS new version
+                if (sp_platform == "Android"
+                        or (sp_platform == "iOS" and is_new_version(sp_version))):
+                    should_modify = False
+
+        return should_modify
+      
     def _load_hosts(self) -> None:
         host_mappings: dict[str, Mapping] = {}
         star_mappings: dict[str, Mapping] = {}
