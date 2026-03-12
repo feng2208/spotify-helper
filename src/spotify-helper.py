@@ -198,7 +198,7 @@ class SpotifyHelper(TlsConfig):
             data.context.server.address = (host, 443)
 
         global SIGNUP_MODE
-        # signup finished
+        # mobile login
         if host in ['login5.spotify.com']:
             SIGNUP_MODE = False
 
@@ -254,6 +254,8 @@ class SpotifyHelper(TlsConfig):
     def requestheaders(self, flow: HTTPFlow) -> None:
         flow.request.stream = True
         req_path = flow.request.path
+        global SIGNUP_MODE
+        
         if self._spclient(flow.request.host_header):
             # spotify ads and trackers
             if (req_path.startswith("/ads/")
@@ -262,15 +264,17 @@ class SpotifyHelper(TlsConfig):
                     or req_path.startswith("/gabo-receiver-service/")):
                 flow.request.stream = False
                 flow.response = Response.make(503)
+                
             elif (req_path.startswith("/artistview/v1/artist")):
                 flow.request.path = flow.request.path.replace('platform=iphone', 'platform=ipad')
+                
             # spotify protobuf
             elif self._sp_path(req_path):
                 if 'if-none-match' in flow.request.headers:
                     del flow.request.headers['if-none-match']
-            # signup mode
-            elif '/signup/' in req_path:
-                global SIGNUP_MODE
+                    
+            # signup
+            elif flow.request.host_header == 'spclient.wg.spotify.com' and '/signup/' in req_path:
                 SIGNUP_MODE = True
                 logging.info(f"xxxxxxxx-spotify-signup-mode-xxxxxxxx")
                 flow.kill()
@@ -279,6 +283,11 @@ class SpotifyHelper(TlsConfig):
                     handler = server.connections.get(flow.client_conn.id)
                     if handler:
                         handler.close_connection(flow.client_conn, False)
+                        
+            # desktop login
+            elif (flow.request.host_header == 'accounts.spotify.com'
+                    and req_path.startswith("/api/token")):
+                SIGNUP_MODE = False
 
         elif req_path == "/proxy.pac":
             proxy_server = f"PROXY {flow.request.host_header}"
@@ -315,7 +324,7 @@ class SpotifyHelper(TlsConfig):
                 flow.response.content = data
 
     def _spclient(self, host: str) -> bool:
-        if (host == "spclient.wg.spotify.com"
+        if (host in ["spclient.wg.spotify.com", "accounts.spotify.com"]
                 or "-spclient.spotify.com" in host):
             return True
         return False
