@@ -342,9 +342,8 @@ class SpotifyHelper(TlsConfig):
                 sp_version = flow.request.headers["spotify-app-version"]
                 logging.info(f"xxxxxxxx-spotify-version: {sp_platform}/{sp_version}")
 
-                # do not modify when on android or iOS new version
-                if (sp_platform == "Android"
-                        or (sp_platform == "iOS" and is_new_version(sp_version))):
+                # do not modify if iOS new version
+                if sp_platform == "iOS" and is_new_version(sp_version):
                     should_modify = False
 
         return should_modify
