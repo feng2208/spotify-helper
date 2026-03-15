@@ -64,7 +64,7 @@ HOST_LIST = []
 
 
 def is_new_version(new_version: str) -> bool:
-    old_version = (100, 1, 28) # iOS 100.1.28 always False for now
+    old_version = (9, 1, 14) # iOS 9.1.14
     return tuple(map(int, new_version.split('.')))[:3] > old_version
 
 def generate_pac_content(domains, proxy_server):
