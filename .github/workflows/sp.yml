@@ -1,6 +1,8 @@
 name: Check sp
 
 on:
+  schedule:
+    - cron: '1 23 * * *'
   workflow_dispatch:
   push:
     branches:
