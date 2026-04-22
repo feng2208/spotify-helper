@@ -1,0 +1,108 @@
+name: Check sp
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - sp.json
+      - .github/workflows/sp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check connectivity with curl
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f sp.json ]]; then
+            echo "sp.json not found"
+            exit 1
+          fi
+
+          reachable=()
+          declare -A seen=()
+          fallback_file=""
+
+          cleanup() {
+            if [[ -n "${fallback_file}" && -f "${fallback_file}" ]]; then
+              rm -f "${fallback_file}"
+            fi
+          }
+          trap cleanup EXIT
+
+          check_file() {
+            local source_file="$1"
+            mapfile -t endpoints < <(jq -r '.[]' "${source_file}")
+
+            for endpoint in "${endpoints[@]}"; do
+              if [[ -z "${endpoint}" || -n "${seen[${endpoint}]:-}" ]]; then
+                continue
+              fi
+
+              ip="${endpoint%:*}"
+              port="${endpoint##*:}"
+
+              http_code="$(curl -s -o /dev/null -w '%{http_code}' \
+                --connect-timeout 5 \
+                --max-time 10 \
+                https://spcf.tangchao.workers.dev/ \
+                --connect-to "::${ip}:${port}" || true)"
+
+              if [[ "${http_code}" == "404" ]]; then
+                echo "OK (200): ${endpoint}"
+                reachable+=("${endpoint}")
+                seen["${endpoint}"]=1
+
+                if [[ ${#reachable[@]} -ge 3 ]]; then
+                  return 0
+                fi
+              else
+                echo "FAIL (${http_code}): ${endpoint}"
+              fi
+            done
+          }
+
+          check_file sp.json
+
+          if [[ ${#reachable[@]} -lt 2 ]]; then
+            echo "Fewer than 2 reachable endpoints from sp.json, downloading fallback list"
+            fallback_file="$(mktemp)"
+            curl -fsSL https://spcf.tangchao.workers.dev/sp.json -o "${fallback_file}"
+            jq -e 'type == "array" and all(.[]; type == "string")' "${fallback_file}" > /dev/null
+            check_file "${fallback_file}"
+          fi
+
+          if [[ ${#reachable[@]} -eq 0 ]]; then
+            echo "[]" > sp.json
+          else
+            printf '%s\n' "${reachable[@]}" | jq -R . | jq -s . > sp.json
+          fi
+
+      - name: Commit sp.json
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- sp.json; then
+            echo "No change in sp.json"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sp.json
+          git commit -m "ci: update reachable endpoints"
+          git push
