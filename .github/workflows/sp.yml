@@ -70,14 +70,21 @@ jobs:
 
           check_file sp.json
 
+          used_fallback=0
           if [[ ${#reachable[@]} -lt 3 ]]; then
             echo "Fewer than 3 reachable endpoints from sp.json, downloading fallback list"
             fallback_file="$(mktemp)"
             curl -fsSL https://spcf.tangchao.workers.dev/sp.json -o "${fallback_file}"
             jq -e 'type == "array" and all(.[]; type == "string")' "${fallback_file}" > /dev/null
             check_file "${fallback_file}"
+            used_fallback=1
           fi
 
+          if [[ "${used_fallback}" == "0" ]]; then
+            exit 0
+          fi
+
+          
           if [[ ${#reachable[@]} -eq 0 ]]; then
             echo "[]" > sp.json
           else
