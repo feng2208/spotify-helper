@@ -62,9 +62,6 @@ jobs:
                 reachable+=("${endpoint}")
                 seen["${endpoint}"]=1
 
-                if [[ ${#reachable[@]} -ge 3 ]]; then
-                  return 0
-                fi
               else
                 echo "FAIL (${http_code}): ${endpoint}"
               fi
@@ -73,8 +70,8 @@ jobs:
 
           check_file sp.json
 
-          if [[ ${#reachable[@]} -lt 2 ]]; then
-            echo "Fewer than 2 reachable endpoints from sp.json, downloading fallback list"
+          if [[ ${#reachable[@]} -lt 3 ]]; then
+            echo "Fewer than 3 reachable endpoints from sp.json, downloading fallback list"
             fallback_file="$(mktemp)"
             curl -fsSL https://spcf.tangchao.workers.dev/sp.json -o "${fallback_file}"
             jq -e 'type == "array" and all(.[]; type == "string")' "${fallback_file}" > /dev/null
@@ -84,9 +81,17 @@ jobs:
           if [[ ${#reachable[@]} -eq 0 ]]; then
             echo "[]" > sp.json
           else
-            printf '%s\n' "${reachable[@]}" | jq -R . | jq -s . > sp.json
+            printf '%s\n' "${reachable[@]}" | shuf -n 3 | jq -R . | jq -s . > sp.json
           fi
 
+          printf '%s\n' "${reachable[@]}" | jq -R . | jq -s . > reachable.json
+          echo "Uploading reachable.json..."
+          curl -fsSL -X POST \
+            -F "password=${{ secrets.UPLOAD_PASSWORD }}" \
+            -F "file=@reachable.json" \
+            "${{ secrets.UPLOAD_URL }}" || echo "Warning: File upload failed!"
+
+            
       - name: Commit sp.json
         shell: bash
         run: |
