@@ -6,34 +6,40 @@
 #   six v1.16.0 https://github.com/benjaminp/six
 
 
-import logging
-from dataclasses import dataclass
+"""
+Configuration via environment variables:
+    WS_URL       - WebSocket server URL (default: wss://feng2208.cloudns.cl/sp)
+    WS_SERVERS_URL - WebSocket server address url (default: https://feng2208.cloudns.cl/cf.json)
+    LISTEN_HOST  - Local listen host (default: 127.0.0.1)
+    LISTEN_PORT  - Local listen port (default: 18080)
+"""
 
-from mitmproxy import ctx
 
-from mitmproxy.addonmanager import Loader
 from mitmproxy.http import HTTPFlow
 from mitmproxy.http import Response
 from mitmproxy import tls
-from mitmproxy.addons.tlsconfig import TlsConfig
 from mitmproxy.proxy.server_hooks import ServerConnectionHookData
 import json
 
-import hashlib
-import struct
-
+import asyncio
+import collections
+import logging
 import os
+import threading
+
+from ws_tunnel import TunnelClient, WSServerManager
+
 import sys
 SRC_DIR = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, SRC_DIR + "/lib/")
 import blackboxprotobuf
 from blackboxprotobuf.lib.exceptions import BlackboxProtobufException
 
-from pathlib import Path
-from ruamel.yaml import YAML
-import re
 
-CONFIG_FILE = SRC_DIR + "/config.yaml"
+WS_URL = os.environ.get("WS_URL", "wss://feng2208.cloudns.cl/sp")
+WS_SERVERS_URL = os.environ.get("WS_SERVERS_URL", "https://feng2208.cloudns.cl/sp.json")
+LISTEN_HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")
+LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "18080"))
 
 SPOTS = {
     'player-license': 'premium',
@@ -52,15 +58,48 @@ SPOTS = {
     'social-session-free-tier': 0,
     'is-eligible-premium-unboxing': 1,
 }
-
 SPOTS_DEL = []
-TLS_CLIENTS = {}
+SPOTIFY_AP = [
+    'ap-gue1.spotify.com',
+    'ap-guc3.spotify.com',
+    'ap-gew1.spotify.com',
+    'ap-gew4.spotify.com',
+    'ap-gae2.spotify.com',
+]
+SPOTIFY_HOSTS = [
+    'www.google.com',
+    '*.gstatic.com',
+    'accounts.spotify.com',
+    'www.spotify.com',
+    'spclient.wg.spotify.com',
+    'login5.spotify.com',
+]
+SPOTIFY_ADS = [
+    '/ads/',
+    '/ad-logic/',
+    '/desktop-update/',
+    '/gabo-receiver-service/',
+]
+SPOTIFY_PREMIUM = [
+    'spclient.wg.spotify.com',
+    '*-spclient.spotify.com',
+]
+SPOTIFY_CUSTOMIZE = 'v1/customize'
+SPOTIFY_BOOTSTRAP = 'v1/bootstrap'
 
-# spotify signup
-SIGNUP_MODE = False
 
-# pac
-HOST_LIST = []
+
+logger = logging.getLogger("ws_tunnel")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        "[%(asctime)s] %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    logger.addHandler(handler)
+
+
 
 
 def is_new_version(new_version: str) -> bool:
@@ -88,6 +127,7 @@ function FindProxyForURL(url, host) {{
 }}
 """
     return js_content
+
 
 # spotify ptotobuf
 def modify_spotify_body(data, attributes, bootstrap=False):
@@ -139,37 +179,23 @@ def change_attributes(configs: list, attributes: dict) -> bool:
                 changed = True
     return changed
 
-@dataclass
-class Mapping:
-    sni: str
-    address: tuple
 
-class SpotifyHelper(TlsConfig):
-    # configurations for regular ("example.com") mappings:
-    host_mappings: dict[str, Mapping]
 
-    # Configurations for star ("*.example.com") mappings:
-    star_mappings: dict[str, Mapping]
 
-    tcp_hosts: list[str]
+class SpotifyHelper:
 
-    hosts_loaded: bool
-    yaml_config: dict
+    def __init__(self):
+        self.ws_servers_url = WS_SERVERS_URL
+        self.ws_url = WS_URL
+        self.server_manager = WSServerManager(self.ws_servers_url, self.ws_url)
+        self.target_queue = collections.deque()
+        self.listen_host = LISTEN_HOST
+        self.listen_port = LISTEN_PORT
 
-    def __init__(self) -> None:
-        self.host_mappings = {}
-        self.star_mappings = {}
-        self.tcp_hosts = []
-        self.hosts_loaded = False
-        self.yaml_config = {}
+        self._tunnel: TunnelClient | None = None
+        self._thread: threading.Thread | None = None
 
-    def load(self, loader: Loader) -> None:
-        if not self.hosts_loaded:
-            yaml = YAML(typ='safe')
-            self.yaml_config = yaml.load(Path(CONFIG_FILE))
-            self._load_hosts()
-            self.hosts_loaded = True
-
+    def load(self, loader) -> None:
         loader.add_option(
             name="connection_strategy",
             typespec=str,
@@ -182,116 +208,44 @@ class SpotifyHelper(TlsConfig):
             default=True,
             help="Use the Host header to construct URLs for display",
         )
-        loader.add_option(
-            name="tcp_hosts",
-            typespec=list,
-            default=self.tcp_hosts,
-            help="Generic TCP SSL proxy mode for all hosts that match the pattern",
-        )
 
     def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         data.ignore_connection = True
-        host = data.context.client.sni
-
-        # sni proxy
-        if data.context.server.address is None and host is not None:
-            data.context.server.address = (host, 443)
-
-        global SIGNUP_MODE
-        # mobile login
-        if host in ['login5.spotify.com']:
-            SIGNUP_MODE = False
-
-        if self._spclient(host) and not SIGNUP_MODE:
+        if self._spclient(data.context.client.sni):
             data.ignore_connection = False
 
-        mapping = self._get_sni(host)
-        if mapping is not None:
-            logging.info(f"xxxxxxxx-tls-server-host: {host}")
-            if mapping.sni is not None:
-                data.ignore_connection = False
-                data.context.client.server_sni = mapping.sni
-                logging.info(f"xxxxxxxx-tls-server-sni: {mapping.sni}")
-            if mapping.address is not None:
-                data.context.client.server_address = mapping.address
-                logging.info(f"xxxxxxxx-tls-server-address: {mapping.address}")
-
-        if not data.ignore_connection:
-            # ignore connection after not trusting our CA 3 times
-            ja3 = self._get_ja3(data)
-            if ja3 is not None:
-                data.context.client.ja3 = ja3
-                if ja3 in TLS_CLIENTS and TLS_CLIENTS.get(ja3) > 2:
-                    data.ignore_connection = True
-
-    def tls_failed_client(self, data: tls.TlsData) -> None:
-        if hasattr(data.conn, "ja3"):
-            logging.info(f"xxxxxxxx-tls-client-failed-ja3: {data.conn.ja3}")
-            logging.info(f"xxxxxxxx-tls-client-failed-sni: {data.conn.sni}")
-            if data.conn.ja3 in TLS_CLIENTS:
-                TLS_CLIENTS[data.conn.ja3] += 1
-            else:
-                TLS_CLIENTS[data.conn.ja3] = 1
-
     def server_connect(self, data: ServerConnectionHookData) -> None:
-        _host = data.server.address[0]
-        # desktop version prevent automatic logout after 14 days
-        if _host in self.yaml_config['spotify_ap']:
-            host = self.yaml_config['spotify_ap_address'].split(':')[0]
-            port = int(self.yaml_config['spotify_ap_address'].split(':')[1])
-            data.server.address = (host, port)
-            logging.info(f"xxxxxxxx-spotify-ap: {_host} {data.server.address}")
+        """Called before mitmproxy opens a connection to a server."""
+        if not data.server.address:
+            return
+            
+        original_host, original_port = data.server.address
+        target_str = f"{original_host}:{original_port}"
 
-        else:
-            if hasattr(data.client, "server_address"):
-                data.server.address = data.client.server_address
-            if hasattr(data.client, "server_sni"):
-                data.server.sni = data.client.server_sni
-
-    def server_connect_error(self, data: ServerConnectionHookData) -> None:
-        logging.info(f"error connect: {data.server.address[0]}:{data.server.address[1]}")
+        if self._should_reroute(original_host):
+            self.target_queue.append(target_str)
+            data.server.address = (self.listen_host, self.listen_port)
+            logging.info(f"xxxxxxxx-spotify-xxxxxxxx: {original_host}")
 
     def requestheaders(self, flow: HTTPFlow) -> None:
         flow.request.stream = True
         req_path = flow.request.path
-        global SIGNUP_MODE
         
         if self._spclient(flow.request.host_header):
             # spotify ads and trackers
-            if (req_path.startswith("/ads/")
-                    or req_path.startswith("/ad-logic/")
-                    or req_path.startswith("/desktop-update/")
-                    or req_path.startswith("/gabo-receiver-service/")):
+            if self._is_ads(req_path):
                 flow.request.stream = False
-                flow.response = Response.make(503)
-                
-            elif (req_path.startswith("/artistview/v1/artist")):
-                flow.request.path = flow.request.path.replace('platform=iphone', 'platform=ipad')
-                
+                flow.response = Response.make(200)
+
             # spotify protobuf
             elif self._sp_path(req_path):
                 if 'if-none-match' in flow.request.headers:
                     del flow.request.headers['if-none-match']
-                    
-            # signup
-            elif flow.request.host_header == 'spclient.wg.spotify.com' and '/signup/' in req_path:
-                SIGNUP_MODE = True
-                logging.info(f"xxxxxxxx-spotify-signup-mode-xxxxxxxx")
-                flow.kill()
-                server = ctx.master.addons.get("proxyserver")
-                if server:
-                    handler = server.connections.get(flow.client_conn.id)
-                    if handler:
-                        handler.close_connection(flow.client_conn, False)
-                        
-            # desktop login
-            elif (flow.request.host_header == 'accounts.spotify.com'
-                    and req_path.startswith("/api/token")):
-                SIGNUP_MODE = False
 
         elif req_path == "/proxy.pac":
             proxy_server = f"PROXY {flow.request.host_header}"
-            pac_content = generate_pac_content(HOST_LIST, proxy_server)
+            hosts = list(set(SPOTIFY_HOSTS + SPOTIFY_AP + SPOTIFY_PREMIUM))
+            pac_content = generate_pac_content(hosts, proxy_server)
             flow.response = Response.make(
                 200,
                 pac_content,
@@ -314,7 +268,7 @@ class SpotifyHelper(TlsConfig):
                 logging.info(f"xxxxxxxx-spotify-protobuf-not-bytes-xxxxxxxx")
                 return
 
-            if "v1/bootstrap" in req_path:
+            if SPOTIFY_BOOTSTRAP in req_path:
                 logging.info(f"xxxxxxxx-spotify-protobuf-bootstrap-xxxxxxxx")
                 data = modify_spotify_body(flow.response.content, SPOTS, bootstrap=True)
             else:
@@ -323,14 +277,20 @@ class SpotifyHelper(TlsConfig):
             if data is not None:
                 flow.response.content = data
 
+    def _is_ads(self, path: str) -> bool:
+        for p in SPOTIFY_ADS:
+            if p in path:
+                return True
+        return False
+
     def _spclient(self, host: str) -> bool:
-        if (host in ["spclient.wg.spotify.com", "accounts.spotify.com"]
-                or "-spclient.spotify.com" in host):
-            return True
+        for h in SPOTIFY_PREMIUM:
+            if host == h or host.endswith(h[1:]):
+                return True
         return False
 
     def _sp_path(self, req_path: str) -> bool:
-        return 'v1/customize' in req_path or 'v1/bootstrap' in req_path
+        return SPOTIFY_CUSTOMIZE in req_path or SPOTIFY_BOOTSTRAP in req_path
 
     def _should_modify(self, flow: HTTPFlow) -> bool:
         should_modify = False
@@ -347,130 +307,64 @@ class SpotifyHelper(TlsConfig):
                     should_modify = False
 
         return should_modify
-      
-    def _load_hosts(self) -> None:
-        host_mappings: dict[str, Mapping] = {}
-        star_mappings: dict[str, Mapping] = {}
-        tcp_hosts: list[str] = []
 
-        for mapping in self.yaml_config["mappings"]:
-            address = mapping.get("address")
-            sni = mapping.get("sni")
-            if address is not None:
-                address = (address.split(':')[0], int(address.split(':')[1]))
+    def _should_reroute(self, host: str) -> bool:
+        should_reroute = False
 
-            item = Mapping(
-                        sni=sni,
-                        address=address,
-                   )
-            for host in mapping["hosts"]:
-                HOST_LIST.append(host)
-                if host.startswith("*."):
-                    star_mappings[host[2:]] = item
-                    if sni is not None:
-                        tcp_hosts.append(host[1:].replace('.', r'\.'))
-                else:
-                    host_mappings[host] = item
-                    if sni is not None:
-                        tcp_hosts.append(host.replace('.', r'\.'))
+        # desktop version prevent automatic logout after 14 days
+        if host in SPOTIFY_AP:
+            should_reroute = True
 
-        self.host_mappings = host_mappings
-        self.star_mappings = star_mappings
-        self.tcp_hosts = tcp_hosts
+        else:
+            for h in SPOTIFY_HOSTS:
+                if host == h or host.endswith(h[1:]):
+                    should_reroute = True
 
-    def _get_sni(self, host: str) -> Mapping | None:
-        mapping = self.host_mappings.get(host)
-        if mapping is not None:
-            return mapping
+        return should_reroute
 
-        index = 0
-        while True:
-            index = host.find(".", index)
-            if index == -1:
-                break
-            super_domain = host[(index + 1):]
-            mapping = self.star_mappings.get(super_domain)
-            if mapping is not None:
-                return mapping
-            index += 1
+    def running(self) -> None:
+        """Called once mitmproxy is fully up — start the tunnel thread."""
+        self._thread = threading.Thread(
+            target=self._run_tunnel, daemon=True, name="ws-tunnel",
+        )
+        self._thread.start()
 
-        return None
+    def _run_tunnel(self) -> None:
+        self.server_manager.fetch()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-    def _get_ja3(self, data: tls.ClientHelloData) -> str | None:
-        # GREASE 过滤表
-        GREASE_TABLE = {
-            0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
-            0x8a8a, 0x9a9a, 0xaaaa, 0xbaba, 0xcaca, 0xdada, 0xeaea, 0xfafa
-        }
+        def get_target():
+            if self.target_queue:
+                return self.target_queue.popleft()
+            logger.warning("target_queue is empty, no target available")
+            return None
+
+        self._tunnel = TunnelClient(
+            config_provider=self.server_manager.get_url,
+            target=get_target,
+            listen_host=self.listen_host,
+            listen_port=self.listen_port,
+            on_failed=self.server_manager.mark_failed
+        )
 
         try:
-            ch = data.client_hello
-            raw_bytes = ch.raw_bytes()
+            loop.run_until_complete(self._tunnel.start())
+        except asyncio.CancelledError:
+            logger.error("Tunnel event loop cancelled during shutdown")
+        except Exception as exc:
+            logger.error("Tunnel fatal error: %s", exc)
+        finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                logger.debug("Failed to shutdown async generators cleanly", exc_info=True)
+            loop.close()
 
-            # ==========================================
-            # 1. 智能定位 TLS Version: 771 (0x0303)
-            # ==========================================
-            tls_version = 0
-
-            # 检查 Byte 0 是否是 0x16 (TLS Record Content Type)
-            if raw_bytes[0] == 0x16:
-                # 情况 A: 包含 Record Header (5字节) + Handshake Header (4字节)
-                # 目标版本号在第 9 和 10 字节 (Index 9:11)
-                # 结构: [16 03 01 LL LL] [01 LL LL LL] [VV VV]
-                tls_version = struct.unpack('!H', raw_bytes[9:11])[0]
-
-            elif raw_bytes[0] == 0x01:
-                # 情况 B: 仅包含 Handshake Header (4字节)
-                # 目标版本号在第 4 和 5 字节 (Index 4:6)
-                # 结构: [01 LL LL LL] [VV VV]
-                tls_version = struct.unpack('!H', raw_bytes[4:6])[0]
-
-            else:
-                return None
-
-            # ==========================================
-            # 2. 提取其他字段 (Ciphers, Exts...)
-            # ==========================================
-            # Ciphers
-            ciphers = [c for c in ch.cipher_suites if c not in GREASE_TABLE]
-
-            # Extensions
-            extensions = [ext[0] for ext in ch.extensions if ext[0] not in GREASE_TABLE]
-
-            # Curves & Points (简化演示，实际需解析 payload)
-            ec_curves = []
-            ec_point_formats = []
-
-            # 解析扩展的具体内容 (Extension ID 10 和 11)
-            for ext_id, ext_data in ch.extensions:
-                if ext_id == 10: # Supported Groups
-                     if len(ext_data) >= 2:
-                        count = (len(ext_data) - 2) // 2
-                        fmt = f"!{count}H"
-                        curves = struct.unpack(fmt, ext_data[2:2 + count * 2])
-                        ec_curves = [c for c in curves if c not in GREASE_TABLE]
-                elif ext_id == 11: # EC Point Formats
-                    if len(ext_data) >= 1:
-                        count = len(ext_data) - 1
-                        fmt = f"{count}B"
-                        formats = struct.unpack(fmt, ext_data[1:1 + count])
-                        ec_point_formats = [f for f in formats if f not in GREASE_TABLE]
-
-            # ==========================================
-            # 3. 构造 JA3
-            # ==========================================
-            ja3_raw = ",".join([
-                str(tls_version),
-                "-".join(str(c) for c in ciphers),
-                "-".join(str(e) for e in extensions),
-                "-".join(str(c) for c in ec_curves),
-                "-".join(str(f) for f in ec_point_formats)
-            ])
-
-            return hashlib.md5(ja3_raw.encode()).hexdigest()
-
-        except Exception as e:
-            return None
+    def done(self) -> None:
+        """Called when mitmproxy shuts down."""
+        if self._tunnel:
+            self._tunnel.shutdown()
 
 
 addons = [SpotifyHelper()]
