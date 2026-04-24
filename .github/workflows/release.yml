@@ -36,7 +36,7 @@ jobs:
 
           mkdir -p "${REPO_NAME}/bin"
           mv mitmdump.exe "${REPO_NAME}/bin"
-          cp spotify-helper.vbs _spotify.ps1 "${REPO_NAME}"
+          cp spotify-helper.vbs spotify-helper-auth.vbs _spotify.ps1 "${REPO_NAME}"
           mv src "${REPO_NAME}"
           zip -r "${ASSET_NAME}" "${REPO_NAME}"
 
