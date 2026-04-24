@@ -1,4 +1,9 @@
 ﻿
+param(
+    [switch]$Auth
+)
+
+
 # ==========================================
 # 检查和安装 CA 证书
 # ==========================================
@@ -181,7 +186,11 @@ Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 0
 [ProxyConfig]::Refresh()
 
 # 运行代理
-Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort" -Wait
+if ($Auth) {
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort --set sp_auth=true" -Wait
+} else {
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort" -Wait
+}
 
 # 取消系统代理
 Remove-ItemProperty -Path $regPath -Name AutoConfigURL -ErrorAction SilentlyContinue

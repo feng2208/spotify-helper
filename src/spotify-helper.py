@@ -18,6 +18,7 @@ Configuration via environment variables:
 from mitmproxy.http import HTTPFlow
 from mitmproxy.http import Response
 from mitmproxy import tls
+from mitmproxy import ctx
 from mitmproxy.proxy.server_hooks import ServerConnectionHookData
 import json
 
@@ -208,6 +209,12 @@ class SpotifyHelper:
             default=True,
             help="Use the Host header to construct URLs for display",
         )
+        loader.add_option(
+            name="sp_auth",
+            typespec=bool,
+            default=False,
+            help="enable spotify mode",
+        )
 
     def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         data.ignore_connection = True
@@ -284,6 +291,9 @@ class SpotifyHelper:
         return False
 
     def _spclient(self, host: str) -> bool:
+        if ctx.options.sp_auth:
+            return False
+
         for h in SPOTIFY_PREMIUM:
             if host == h or host.endswith(h[1:]):
                 return True
@@ -324,6 +334,8 @@ class SpotifyHelper:
 
     def running(self) -> None:
         """Called once mitmproxy is fully up — start the tunnel thread."""
+        if ctx.options.sp_auth:
+            logging.info(f"xxxxxxxx-spotify-xxxxxxxx: auth mode")
         self._thread = threading.Thread(
             target=self._run_tunnel, daemon=True, name="ws-tunnel",
         )
