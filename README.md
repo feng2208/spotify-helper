@@ -11,7 +11,7 @@
 ### Windows
 
 - 从官网[下载 spotify](https://download.scdn.co/SpotifySetup.exe) ([离线安装包](https://download.scdn.co/SpotifyFullSetup.exe))并安装运行。
-- [下载 spotify-helper](https://github.com/feng2208/spotify-helper/archive/refs/heads/main.zip) 解压后，双击 `spotify-helper.vbs`，安装证书。
+- [下载 spotify-helper](https://github.com/feng2208/spotify-helper/releases) 解压后，双击 `spotify-helper.vbs`，安装证书。
 - 回到 spotify 软件注册或者登录。
 
 ### iOS
