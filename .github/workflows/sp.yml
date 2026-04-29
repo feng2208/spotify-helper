@@ -2,7 +2,7 @@ name: Check sp
 
 on:
   schedule:
-    - cron: '1 23 * * *'
+    - cron: '1 22 * * *'
   workflow_dispatch:
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check connectivity with curl
+      - name: Update sp.json from remote
         shell: bash
         run: |
           set -euo pipefail
@@ -28,77 +28,30 @@ jobs:
             exit 1
           fi
 
-          reachable=()
-          declare -A seen=()
-          fallback_file=""
-
+          remote_file="$(mktemp)"
           cleanup() {
-            if [[ -n "${fallback_file}" && -f "${fallback_file}" ]]; then
-              rm -f "${fallback_file}"
+            if [[ -f "${remote_file}" ]]; then
+              rm -f "${remote_file}"
             fi
           }
           trap cleanup EXIT
 
-          check_file() {
-            local source_file="$1"
-            mapfile -t endpoints < <(jq -r '.[]' "${source_file}")
-
-            for endpoint in "${endpoints[@]}"; do
-              if [[ -z "${endpoint}" || -n "${seen[${endpoint}]:-}" ]]; then
-                continue
-              fi
-
-              ip="${endpoint%:*}"
-              port="${endpoint##*:}"
-
-              http_code="$(curl -s -o /dev/null -w '%{http_code}' \
-                --connect-timeout 5 \
-                --max-time 10 \
-                https://spcf.tangchao.workers.dev/ \
-                --connect-to "::${ip}:${port}" || true)"
-
-              if [[ "${http_code}" == "404" ]]; then
-                echo "OK (200): ${endpoint}"
-                reachable+=("${endpoint}")
-                seen["${endpoint}"]=1
-
-              else
-                echo "FAIL (${http_code}): ${endpoint}"
-              fi
-            done
-          }
-
-          check_file sp.json
-
-          used_fallback=0
-          if [[ ${#reachable[@]} -lt 3 ]]; then
-            echo "Fewer than 3 reachable endpoints from sp.json, downloading fallback list"
-            fallback_file="$(mktemp)"
-            curl -fsSL https://spcf.tangchao.workers.dev/sp.json -o "${fallback_file}"
-            jq -e 'type == "array" and all(.[]; type == "string")' "${fallback_file}" > /dev/null
-            check_file "${fallback_file}"
-            used_fallback=1
-          fi
-
-          if [[ "${used_fallback}" == "0" ]]; then
-            exit 0
-          fi
-
+          echo "Downloading remote json file..."
+          curl -fsSL https://spcf.tangchao.workers.dev/sp.json -o "${remote_file}"
           
-          if [[ ${#reachable[@]} -eq 0 ]]; then
-            echo "[]" > sp.json
+          # Ensure it's a valid JSON array of strings
+          jq -e 'type == "array" and all(.[]; type == "string")' "${remote_file}" > /dev/null
+
+          # Check if there is any item in local sp.json that is NOT in the downloaded json file
+          missing_count=$(jq --slurpfile remote "${remote_file}" '[.[] | select(. as $i | $remote[0] | index($i) | not)] | length' sp.json)
+
+          if [[ "${missing_count}" -gt 0 ]]; then
+            echo "Found item(s) in local sp.json that are not in the remote json file."
+            echo "Randomly selecting 3 items from the remote json file to update sp.json..."
+            jq -r '.[]' "${remote_file}" | shuf -n 3 | jq -R . | jq -s . > sp.json
           else
-            printf '%s\n' "${reachable[@]}" | shuf -n 3 | jq -R . | jq -s . > sp.json
+            echo "All items in sp.json are present in the remote json file. No changes needed."
           fi
-
-          printf '%s\n' "${reachable[@]}" | jq -R . | jq -s . > reachable.json
-          echo "Uploading reachable.json..."
-          curl -fsSL -X POST \
-            -F "password=${{ secrets.UPLOAD_PASSWORD }}" \
-            -F "file=@reachable.json" \
-            "${{ secrets.UPLOAD_URL }}" || echo "Warning: File upload failed!"
-
-            
       - name: Commit sp.json
         shell: bash
         run: |
