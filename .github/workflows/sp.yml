@@ -37,7 +37,7 @@ jobs:
           trap cleanup EXIT
 
           echo "Downloading remote json file..."
-          curl -fsSL https://spcf.tangchao.workers.dev/sp.json -o "${remote_file}"
+          curl -fsSL https://spcf.tangchao.workers.dev/sp/sp.json -o "${remote_file}"
           
           # Ensure it's a valid JSON array of strings
           jq -e 'type == "array" and all(.[]; type == "string")' "${remote_file}" > /dev/null

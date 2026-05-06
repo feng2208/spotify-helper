@@ -9,7 +9,7 @@
 """
 Configuration via environment variables:
     WS_URL       - WebSocket server URL (default: wss://feng2208.cloudns.cl/sp)
-    WS_SERVERS_URL - WebSocket server address url (default: https://feng2208.cloudns.cl/cf.json)
+    WS_SERVERS_URL - WebSocket server address url (default: https://feng2208.cloudns.cl/sp.json)
     LISTEN_HOST  - Local listen host (default: 127.0.0.1)
     LISTEN_PORT  - Local listen port (default: 18080)
 """
