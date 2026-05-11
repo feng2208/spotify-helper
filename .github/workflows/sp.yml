@@ -44,8 +44,9 @@ jobs:
 
           # Check if there is any item in local sp.json that is NOT in the downloaded json file
           missing_count=$(jq --slurpfile remote "${remote_file}" '[.[] | select(. as $i | $remote[0] | index($i) | not)] | length' sp.json)
-
-          if [[ "${missing_count}" -gt 0 ]]; then
+          sp_len=$(jq 'length' sp.json)
+          
+          if [[ "${missing_count}" -gt 0 || "$sp_len" -eq 0 ]]; then
             echo "Found item(s) in local sp.json that are not in the remote json file."
             echo "Randomly selecting 3 items from the remote json file to update sp.json..."
             jq -r '.[]' "${remote_file}" | shuf -n 3 | jq -R . | jq -s . > sp.json
