@@ -45,9 +45,11 @@ jobs:
           zip -r "${ASSET_NAME}" "${REPO_NAME}"
 
           cp spotify-helper-en.vbs "${REPO_NAME}"
-          rm "${REPO_NAME}/{spotify-helper.vbs,spotify-helper-auth.vbs}"
+          rm "${REPO_NAME}/spotify-helper.vbs"
+          rm "${REPO_NAME}/spotify-helper-auth.vbs"
           cp spotify-helper-en.py "${REPO_NAME}/src"
-          rm "${REPO_NAME}/src/{spotify-helper.py,ws_tunnel.py}"
+          rm "${REPO_NAME}/src/spotify-helper.py"
+          rm "${REPO_NAME}/src/ws_tunnel.py"
           zip -r "${ASSET_NAME_EN}" "${REPO_NAME}"
 
 
