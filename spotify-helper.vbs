@@ -5,4 +5,4 @@ Set objShell = CreateObject("WScript.Shell")
 ' 0 = 隐藏窗口
 ' 1 = 显示窗口
 ' True = 等待 PowerShell 运行完再结束 VBS
-objShell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "".\_spotify.ps1""", 0, False
+objShell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File "".\src\_spotify.ps1""", 0, False

@@ -1,6 +1,7 @@
 ﻿
 param(
-    [switch]$Auth
+    [switch]$Auth,
+    [switch]$EnVersion
 )
 
 
@@ -11,7 +12,7 @@ param(
 # CA 证书 .cer 文件实际路径
 $CertFileName = "mitmproxy-ca-cert.cer"
 $CertFilePath = Join-Path -Path $HOME -ChildPath ".mitmproxy\$CertFileName"
-$MitmdumpExe = "./bin/mitmdump.exe"
+$MitmdumpExe = "../bin/mitmdump.exe"
 
 try {
     # 1. 验证文件是否存在
@@ -179,18 +180,30 @@ Add-Type -TypeDefinition $code -Language CSharp
 # 设置系统代理
 $PacUrl = "http://127.0.0.1:$ProxyPort/proxy.pac"
 $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-Set-ItemProperty -Path $regPath -Name AutoConfigURL -Value $PacUrl
-Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 0
 
-# 立即刷新设置
-[ProxyConfig]::Refresh()
+if (-not $EnVersion) {
+    Set-ItemProperty -Path $regPath -Name AutoConfigURL -Value $PacUrl
+    Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 0
+
+    # 立即刷新设置
+    [ProxyConfig]::Refresh()
+}
 
 # 运行代理
 if ($Auth) {
-    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort --set sp_auth=true" -Wait
-} else {
-    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort" -Wait
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./spotify-helper.py --set flow_detail=0 -p $ProxyPort --set sp_auth=true" -Wait
 }
 
-# 取消系统代理
-Remove-ItemProperty -Path $regPath -Name AutoConfigURL -ErrorAction SilentlyContinue
+elseif ($EnVersion) {
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./spotify-helper-en.py --set flow_detail=0 -p $ProxyPort"
+
+}
+
+else {
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./spotify-helper.py --set flow_detail=0 -p $ProxyPort" -Wait
+}
+
+if (-not $EnVersion) {
+    # 取消系统代理
+    Remove-ItemProperty -Path $regPath -Name AutoConfigURL -ErrorAction SilentlyContinue
+}
