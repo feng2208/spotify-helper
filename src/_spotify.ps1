@@ -12,7 +12,7 @@ param(
 # CA 证书 .cer 文件实际路径
 $CertFileName = "mitmproxy-ca-cert.cer"
 $CertFilePath = Join-Path -Path $HOME -ChildPath ".mitmproxy\$CertFileName"
-$MitmdumpExe = "../bin/mitmdump.exe"
+$MitmdumpExe = "./bin/mitmdump.exe"
 
 try {
     # 1. 验证文件是否存在
@@ -191,16 +191,16 @@ if (-not $EnVersion) {
 
 # 运行代理
 if ($Auth) {
-    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./spotify-helper.py --set flow_detail=0 -p $ProxyPort --set sp_auth=true" -Wait
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort --set sp_auth=true" -Wait
 }
 
 elseif ($EnVersion) {
-    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./spotify-helper-en.py --set flow_detail=0 -p $ProxyPort"
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper-en.py --set flow_detail=0 -p $ProxyPort"
 
 }
 
 else {
-    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./spotify-helper.py --set flow_detail=0 -p $ProxyPort" -Wait
+    Start-Process -FilePath $MitmdumpExe -ArgumentList "-s ./src/spotify-helper.py --set flow_detail=0 -p $ProxyPort" -Wait
 }
 
 if (-not $EnVersion) {
