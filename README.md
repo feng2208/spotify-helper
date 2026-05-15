@@ -11,14 +11,6 @@
 ### Windows
 
 - 从官网[下载 spotify](https://download.scdn.co/SpotifySetup.exe) ([离线安装包](https://download.scdn.co/SpotifyFullSetup.exe))并安装运行。
-- [下载 spotify-helper](https://github.com/feng2208/spotify-helper/releases) 解压后，双击 `spotify-helper.vbs`，安装证书。
-- 回到 spotify 软件注册或者登录。
-
-### iOS
-
-- 首先在 Windows 上运行 `spotify-helper.vbs`。
-- 手机设置代理地址为电脑 IP 和端口 `8180`。
-- 在浏览器打开 http://mitm.it 并下载相应的 CA 证书，并让系统信任该证书。
-- 安装或打开 spotify app 就可以听歌了。
-
-版本在 `9.1.14` 以上的只能屏蔽广告，不能取消随机播放。
+- [下载 spotify-helper](https://github.com/feng2208/spotify-helper/releases) 解压后，
+  - 注册或者登录时运行 `spotify-helper-auth.vbs`
+  - 听歌时运行 `spotify-helper.vbs`
