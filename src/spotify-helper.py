@@ -76,8 +76,9 @@ SPOTIFY_HOSTS = [
     '*.gstatic.com',
     'accounts.spotify.com',
     'www.spotify.com',
-    'spclient.wg.spotify.com',
     'login5.spotify.com',
+    'spclient.wg.spotify.com',
+    '*-spclient.spotify.com',
 ]
 SPOTIFY_ADS = [
     '/ads/',
@@ -257,7 +258,7 @@ class SpotifyHelper:
 
         elif req_path == "/proxy.pac":
             proxy_server = f"PROXY {flow.request.host_header}"
-            hosts = list(set(SPOTIFY_HOSTS + SPOTIFY_AP + SPOTIFY_PREMIUM))
+            hosts = list(set(SPOTIFY_HOSTS + SPOTIFY_AP))
             pac_content = generate_pac_content(hosts, proxy_server)
             flow.response = Response.make(
                 200,
