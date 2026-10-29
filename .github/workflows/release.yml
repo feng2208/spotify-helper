@@ -28,10 +28,8 @@ jobs:
           VERSION="${TAG_NAME#v}"
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
           ASSET_NAME="${REPO_NAME}_${VERSION}_windows_amd64.zip"
-          ASSET_NAME_EN="${REPO_NAME}_${VERSION}_windows_amd64_en.zip"
 
           echo "ASSET_NAME=${ASSET_NAME}" >> "${GITHUB_ENV}"
-          echo "ASSET_NAME_EN=${ASSET_NAME_EN}" >> "${GITHUB_ENV}"
 
           curl -fL "${ARCHIVE_URL}" -o mitmproxy.zip
           unzip mitmproxy.zip
@@ -40,17 +38,8 @@ jobs:
           mv src "${REPO_NAME}"
           mv mitmdump.exe "${REPO_NAME}/bin"
 
-          cp spotify-helper.vbs spotify-helper-auth.vbs "${REPO_NAME}"
-          mv "${REPO_NAME}/src/spotify-helper-en.py" .
+          cp spotify-helper.vbs "${REPO_NAME}"
           zip -r "${ASSET_NAME}" "${REPO_NAME}"
-
-          cp spotify-helper-en.vbs "${REPO_NAME}"
-          rm "${REPO_NAME}/spotify-helper.vbs"
-          rm "${REPO_NAME}/spotify-helper-auth.vbs"
-          cp spotify-helper-en.py "${REPO_NAME}/src"
-          rm "${REPO_NAME}/src/spotify-helper.py"
-          rm "${REPO_NAME}/src/ws_tunnel.py"
-          zip -r "${ASSET_NAME_EN}" "${REPO_NAME}"
 
 
       - name: release
@@ -58,4 +47,3 @@ jobs:
         with:
           files: |
             ${{ env.ASSET_NAME }}
-            ${{ env.ASSET_NAME_EN }}
